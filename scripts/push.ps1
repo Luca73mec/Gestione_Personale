@@ -30,3 +30,5 @@ $StagedFiles = git diff --cached --name-only
 if ($StagedFiles -notcontains "VERSION") { throw "VERSION is not staged; refusing to commit" }
 git commit -m "Update version to $NextVersion"
 git push -u origin HEAD
+git tag -a "v$NextVersion" -m "Release v$NextVersion"
+git push origin "v$NextVersion"

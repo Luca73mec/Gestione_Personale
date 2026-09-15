@@ -55,3 +55,5 @@ git diff --cached --name-only | grep -Fxq VERSION || {
 }
 git commit -m "Update version to $next_version"
 git push -u origin HEAD
+git tag -a "v$next_version" -m "Release v$next_version"
+git push origin "v$next_version"

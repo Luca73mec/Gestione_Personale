@@ -122,6 +122,7 @@ def run(host="127.0.0.1", port=8080):
     print(f" ▸ Database:         {db.DB_FILE}")
     print(" ▸ Premi Ctrl+C per arrestare il server.")
     print("=" * 65 + "\n")
+    sys.stdout.flush()
 
     try:
         httpd.serve_forever()

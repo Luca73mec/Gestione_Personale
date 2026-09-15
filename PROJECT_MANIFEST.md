@@ -17,6 +17,7 @@ GestionePersonaleWeb/
 ├── static/                      # Frontend HTML, CSS e JavaScript
 ├── tests/                       # Test automatici
 ├── scripts/                     # Automazione versionamento e push
+├── .github/workflows/           # Automazione GitHub Releases
 ├── .gitignore                   # Esclusioni Git per cache e database locale
 ├── CATALOGO CIFIGE ed._2022-24.pdf  # Catalogo corsi sorgente
 ├── run.sh                       # Avvio locale dell'applicazione
@@ -32,6 +33,7 @@ GestionePersonaleWeb/
 - La versione deve essere aggiornata prima del commit e deve sempre essere inclusa nello staging.
 - Il messaggio di commit obbligatorio è `Update version to X.Y.Z`.
 - Il Manifest deve riportare la stessa versione e l'ora dell'ultimo aggiornamento.
+- Ogni versione pubblicata crea il tag Git `vX.Y.Z` e una GitHub Release con lo stesso nome.
 
 ## Convenzioni di naming e commit
 
@@ -44,17 +46,18 @@ GestionePersonaleWeb/
 
 1. Eseguire `scripts/push.sh` su Linux/macOS oppure `scripts/push.ps1` su Windows PowerShell.
 2. Lo script legge `VERSION`, incrementa il PATCH e aggiorna questo Manifest.
-3. Lo script aggiunge i file modificati, verifica che `VERSION` sia incluso, crea il commit e infine esegue `git push`.
-4. Prima del primo push, configurare il repository Git locale e il remote GitHub.
-5. Quando vengono aggiunti file o cartelle importanti, aggiornare la sezione della struttura.
+3. Lo script aggiunge i file modificati, verifica che `VERSION` sia incluso, crea il commit, esegue `git push` e pubblica il tag `vX.Y.Z`.
+4. Il workflow GitHub Actions crea automaticamente la Release corrispondente con note generate dai commit.
+5. Prima del primo push, configurare il repository Git locale e il remote GitHub.
+6. Quando vengono aggiunti file o cartelle importanti, aggiornare la sezione della struttura.
 
 ## Stato attuale del progetto
 
-Versione corrente: `0.1.2`
+Versione corrente: `0.1.3`
 
 ## Ultimo aggiornamento
 
-2026-09-15 12:50:00+02:00
+2026-09-15 13:00:29+02:00
 
 ## Note per agenti esterni
 
