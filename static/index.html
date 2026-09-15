@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestione Personale Web - Fascicoli e Scadenzario</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-badge">GP</div>
+      <div class="sidebar-brand">
+        <h1>Gestione Personale</h1>
+        <p>Sistema Informativo</p>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="nav-link active" data-view="dashboard" onclick="navigate('dashboard')">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        <span>Cruscotto</span>
+      </a>
+
+      <a class="nav-link" data-view="personale" onclick="navigate('personale')">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        <span>Personale</span>
+      </a>
+
+      <a class="nav-link" data-view="scadenzario" onclick="navigate('scadenzario')">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Scadenzario</span>
+        <span class="nav-badge danger" id="nav-badge-note" style="display: none;">0</span>
+      </a>
+
+      <a class="nav-link" data-view="corsi" onclick="navigate('corsi')">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        <span>Catalogo Corsi</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      Server Locale v1.0<br>
+      SQLite Database Attivo
+    </div>
+  </aside>
+
+  <!-- MAIN WRAPPER -->
+  <div class="main-wrapper">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="page-title">
+        <h2 id="page-title-text">Cruscotto di Controllo</h2>
+        <p id="page-subtitle-text">Panoramica generale e monitoraggio scadenze</p>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-primary" onclick="openModal('modal-nuovo-personale')">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          Nuovo Dipendente
+        </button>
+      </div>
+    </header>
+
+    <!-- CONTENT CONTAINER -->
+    <main class="content-container">
+
+      <!-- ========================================================== -->
+      <!-- VIEW 1: DASHBOARD -->
+      <!-- ========================================================== -->
+      <section id="view-dashboard">
+        <!-- Stat Cards -->
+        <div class="stats-grid">
+          <div class="stat-card info">
+            <span class="stat-label">Personale in Servizio</span>
+            <span class="stat-value" id="stat-totale-personale">-</span>
+            <span class="stat-subtext">Dipendenti attivi a ruolo</span>
+          </div>
+
+          <div class="stat-card danger">
+            <span class="stat-label">Note Caratteristiche Scadute</span>
+            <span class="stat-value" id="stat-note-scadute" style="color: var(--danger);">-</span>
+            <span class="stat-subtext">Oltre i 365 giorni dal periodo</span>
+          </div>
+
+          <div class="stat-card warning">
+            <span class="stat-label">Note in Scadenza (≤ 30 gg)</span>
+            <span class="stat-value" id="stat-note-urgenti" style="color: var(--warning);">-</span>
+            <span class="stat-subtext">Compilazione richiesta a breve</span>
+          </div>
+
+          <div class="stat-card warning">
+            <span class="stat-label">Patenti in Scadenza / Scadute</span>
+            <span class="stat-value" id="stat-patenti-scadenza">-</span>
+            <span class="stat-subtext">Civili e di Servizio</span>
+          </div>
+
+          <div class="stat-card info">
+            <span class="stat-label">Passaporti in Scadenza</span>
+            <span class="stat-value" id="stat-passaporti-scadenza">-</span>
+            <span class="stat-subtext">Documenti di servizio</span>
+          </div>
+
+          <div class="stat-card success">
+            <span class="stat-label">Corsi a Catalogo</span>
+            <span class="stat-value" id="stat-totale-corsi">-</span>
+            <span class="stat-subtext">Formazione e abilitazioni</span>
+          </div>
+        </div>
+
+        <!-- Dashboard Tables Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 24px;">
+          <!-- Note Caratteristiche in Scadenza -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                Note Caratteristiche: Scadenze Prioritarie
+              </h3>
+              <button class="btn btn-secondary btn-sm" onclick="navigate('scadenzario')">Vedi tutte</button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Dipendente</th>
+                    <th>Matricola</th>
+                    <th>Documento</th>
+                    <th>Scadenza (365 gg)</th>
+                    <th>Stato</th>
+                    <th>Azione</th>
+                  </tr>
+                </thead>
+                <tbody id="dash-table-note">
+                  <tr><td colspan="6" class="text-center" style="padding: 20px;">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Patenti e Passaporti in Scadenza -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Patenti e Passaporti in Scadenza
+              </h3>
+              <button class="btn btn-secondary btn-sm" onclick="navigate('scadenzario')">Vedi tutte</button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Dipendente</th>
+                    <th>Documento</th>
+                    <th>Data Scadenza</th>
+                    <th>Stato</th>
+                    <th>Azione</th>
+                  </tr>
+                </thead>
+                <tbody id="dash-table-altri-doc">
+                  <tr><td colspan="5" class="text-center" style="padding: 20px;">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- VIEW 2: ELENCO PERSONALE -->
+      <!-- ========================================================== -->
+      <section id="view-personale" style="display: none;">
+        <!-- Search & Filter Bar -->
+        <div class="search-filter-bar">
+          <div class="search-input-wrap">
+            <input type="text" id="search-personale" class="form-control" placeholder="🔍 Cerca per cognome, nome, matricola, grado o codice fiscale...">
+          </div>
+          <div style="width: 250px;">
+            <select id="filter-reparto" class="form-control">
+              <option value="">Tutti i Reparti / Uffici</option>
+              <option value="Ufficio Piani ed Intelligence">Ufficio Piani ed Intelligence</option>
+              <option value="Sezione Studi Speciali">Sezione Studi Speciali</option>
+              <option value="Sezione Pianificazione Operativa">Sezione Pianificazione Operativa</option>
+            </select>
+          </div>
+          <div style="width: 170px;">
+            <select id="filter-stato" class="form-control">
+              <option value="">Tutti gli Stati</option>
+              <option value="In Servizio">In Servizio</option>
+              <option value="Congedo">Congedo</option>
+              <option value="Distaccato">Distaccato</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary" onclick="loadPersonaleList()">Aggiorna</button>
+        </div>
+
+        <!-- Table -->
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Grado</th>
+                  <th>Cognome e Nome</th>
+                  <th>Matricola</th>
+                  <th>Reparto / Ufficio</th>
+                  <th>Stato</th>
+                  <th>Scadenza Note Caratteristiche</th>
+                  <th>Documenti & Corsi</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="table-personale-body">
+                <tr><td colspan="8" class="text-center" style="padding: 20px;">Caricamento personale...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- VIEW 3: DETTAGLIO FASCICOLO PERSONALE -->
+      <!-- ========================================================== -->
+      <section id="view-dettaglio-personale" style="display: none;">
+        <!-- Hero Header -->
+        <div class="profile-hero">
+          <div class="profile-hero-info">
+            <h3 id="det-nome-completo">Grado Cognome Nome</h3>
+            <p id="det-sottotitolo">Matricola: - | Reparto: -</p>
+            <div class="profile-hero-badges" id="det-stato-badge"></div>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-sm" onclick="openModificaPersonaleModal()">
+              ✏️ Modifica Dati Operatore
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="window.print()">
+              🖨️ Stampa Fascicolo
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="navigate('personale')">
+              ← Torna a Elenco
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="eliminaPersonaleCorrente()">
+              Elimina
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabs Header -->
+        <div class="tabs-header">
+          <button class="tab-btn active" data-tab="anagrafica" onclick="switchDetailTab('anagrafica')">
+            📋 Anagrafica & Recapiti
+          </button>
+          <button class="tab-btn" data-tab="note" onclick="switchDetailTab('note')">
+            ⭐ Note Caratteristiche & Scadenze
+          </button>
+          <button class="tab-btn" data-tab="patenti" onclick="switchDetailTab('patenti')">
+            🚗 Patenti di Guida
+          </button>
+          <button class="tab-btn" data-tab="passaporti" onclick="switchDetailTab('passaporti')">
+            🛂 Passaporto di Servizio
+          </button>
+          <button class="tab-btn" data-tab="corsi" onclick="switchDetailTab('corsi')">
+            🎓 Corsi Frequentati
+          </button>
+        </div>
+
+        <!-- TAB 1: ANAGRAFICA -->
+        <div id="tab-content-anagrafica">
+          <div class="card">
+            <div class="card-header">
+              <h4 class="card-title">Dati Anagrafici e Informazioni di Servizio</h4>
+              <button class="btn btn-secondary btn-sm" onclick="openModificaPersonaleModal()">
+                ✏️ Modifica Scheda
+              </button>
+            </div>
+            <div class="form-grid" style="row-gap: 20px;">
+              <div>
+                <span class="form-label">Codice Fiscale</span>
+                <strong id="anag-cf" style="font-size: 15px; letter-spacing: 0.05em;">-</strong>
+              </div>
+              <div>
+                <span class="form-label">Data e Luogo di Nascita</span>
+                <span id="anag-nascita" style="font-size: 15px;">-</span>
+              </div>
+              <div>
+                <span class="form-label">Sesso</span>
+                <span id="anag-sesso" style="font-size: 15px;">-</span>
+              </div>
+              <div>
+                <span class="form-label">Data Arruolamento / Assunzione</span>
+                <span id="anag-arruolamento" style="font-size: 15px;">-</span>
+              </div>
+              <div>
+                <span class="form-label">Reparto / Ufficio</span>
+                <strong id="anag-reparto" style="font-size: 15px; color: var(--primary);">-</strong>
+              </div>
+              <div>
+                <span class="form-label">Incarico Ricoperto</span>
+                <span id="anag-incarico" style="font-size: 15px;">-</span>
+              </div>
+              <div class="form-group full" style="background: var(--slate-50); padding: 14px 18px; border-radius: var(--radius-md); border-left: 4px solid var(--secondary);">
+                <span class="form-label" style="margin-bottom: 2px;">Posto Tabellare</span>
+                <strong id="anag-posto-tabellare" style="font-size: 16px; color: var(--slate-900);">-</strong>
+              </div>
+              <div class="form-group full">
+                <span class="form-label">Indirizzo di Residenza</span>
+                <span id="anag-residenza" style="font-size: 15px;">-</span>
+              </div>
+              <div>
+                <span class="form-label">Email Istituzionale</span>
+                <span id="anag-email-ist" style="font-size: 15px;">-</span>
+              </div>
+              <div>
+                <span class="form-label">Email Personale</span>
+                <span id="anag-email-pers" style="font-size: 15px;">-</span>
+              </div>
+              <div>
+                <span class="form-label">Recapito Telefonico</span>
+                <span id="anag-telefono" style="font-size: 15px;">-</span>
+              </div>
+              <div class="form-group full">
+                <span class="form-label">Note Generali / Competenze</span>
+                <p id="anag-note" style="color: var(--slate-600); font-size: 14px;">-</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: NOTE CARATTERISTICHE -->
+        <div id="tab-content-note" style="display: none;">
+          <!-- Card Sintesi Prossima Scadenza (365 gg) -->
+          <div id="note-summary-card"></div>
+
+          <div class="card">
+            <div class="card-header">
+              <h4 class="card-title">Storico Documenti Caratteristici e Valutativi</h4>
+              <button class="btn btn-primary btn-sm" onclick="openModal('modal-nuova-nota')">
+                + Nuova Nota Caratteristica
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tipologia Documento</th>
+                    <th>Motivo Redazione</th>
+                    <th>Periodo Valutato</th>
+                    <th>Data Firma Presa Visione</th>
+                    <th>Scadenza Prossima Nota (365 gg)</th>
+                    <th>Giudizio Finale</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="table-note-body">
+                  <tr><td colspan="7" class="text-center" style="padding: 20px;">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: PATENTI -->
+        <div id="tab-content-patenti" style="display: none;">
+          <div class="card">
+            <div class="card-header">
+              <h4 class="card-title">Patenti Civili e di Servizio</h4>
+              <button class="btn btn-primary btn-sm" onclick="openModal('modal-nuova-patente')">
+                + Aggiungi Patente
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Categoria</th>
+                    <th>Numero Patente</th>
+                    <th>Ente Rilascio</th>
+                    <th>Rilascio</th>
+                    <th>Scadenza</th>
+                    <th>Abilitazioni / Limitazioni</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="table-patenti-body">
+                  <tr><td colspan="8" class="text-center" style="padding: 20px;">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: PASSAPORTO -->
+        <div id="tab-content-passaporti" style="display: none;">
+          <div class="card">
+            <div class="card-header">
+              <h4 class="card-title">Passaporto di Servizio / Missioni</h4>
+              <button class="btn btn-primary btn-sm" onclick="openModal('modal-nuovo-passaporto')">
+                + Registra Passaporto
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Numero Passaporto</th>
+                    <th>Tipo</th>
+                    <th>Data Rilascio</th>
+                    <th>Data Scadenza</th>
+                    <th>Stato</th>
+                    <th>Ubicazione Fisica</th>
+                    <th>Autorità di Rilascio</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="table-passaporti-body">
+                  <tr><td colspan="8" class="text-center" style="padding: 20px;">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: CORSI -->
+        <div id="tab-content-corsi" style="display: none;">
+          <div class="card">
+            <div class="card-header">
+              <h4 class="card-title">Corsi Frequentati e Formazione Svolta</h4>
+              <button class="btn btn-primary btn-sm" onclick="popolaSelectCorsi(); openModal('modal-nuovo-corso-persona');">
+                + Registra Corso Frequentato
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Corso</th>
+                    <th>Ente Erogatore</th>
+                    <th>Periodo</th>
+                    <th>Esito</th>
+                    <th>N. Attestato</th>
+                    <th>Scadenza Abilitazione</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="table-corsi-frequentati-body">
+                  <tr><td colspan="7" class="text-center" style="padding: 20px;">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- VIEW 4: SCADENZARIO GENERALE -->
+      <!-- ========================================================== -->
+      <section id="view-scadenzario" style="display: none;">
+        <!-- Note Caratteristiche -->
+        <div class="card">
+          <div class="card-header">
+            <h4 class="card-title">⭐ Note Caratteristiche Scadute o in Scadenza Entro 60 Giorni</h4>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dipendente</th>
+                  <th>Matricola</th>
+                  <th>Documento</th>
+                  <th>Scadenza (365 gg)</th>
+                  <th>Stato / Urgenza</th>
+                  <th>Azione</th>
+                </tr>
+              </thead>
+              <tbody id="scad-table-note"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Patenti -->
+        <div class="card">
+          <div class="card-header">
+            <h4 class="card-title">🚗 Patenti Civili e di Servizio in Scadenza</h4>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dipendente</th>
+                  <th>Tipo / Categoria</th>
+                  <th>Numero</th>
+                  <th>Data Scadenza</th>
+                  <th>Stato</th>
+                  <th>Azione</th>
+                </tr>
+              </thead>
+              <tbody id="scad-table-patenti"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Passaporti -->
+        <div class="card">
+          <div class="card-header">
+            <h4 class="card-title">🛂 Passaporti di Servizio in Scadenza</h4>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dipendente</th>
+                  <th>Numero</th>
+                  <th>Ubicazione Custodia</th>
+                  <th>Data Scadenza</th>
+                  <th>Stato</th>
+                  <th>Azione</th>
+                </tr>
+              </thead>
+              <tbody id="scad-table-passaporti"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================== -->
+      <!-- VIEW 5: CATALOGO CORSI -->
+      <!-- ========================================================== -->
+      <section id="view-corsi" style="display: none;">
+        <div class="card">
+          <div class="card-header">
+            <h4 class="card-title">Catalogo Corsi di Formazione</h4>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" onclick="openModal('modal-upload-catalogo-pdf')">
+                📄 Carica Catalogo PDF
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="openModal('modal-nuovo-catalogo-corso')">
+                + Nuovo Corso a Catalogo
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead>
+                <tr>
+                  <th>Codice</th>
+                  <th>Denominazione Corso</th>
+                  <th>Ente Erogatore</th>
+                  <th>Durata & Validità</th>
+                  <th style="min-width: 250px;">Prerequisiti di Accesso</th>
+                  <th>Partecipanti / Fonte</th>
+                </tr>
+              </thead>
+              <tbody id="table-corsi-catalogo-body">
+                <tr><td colspan="6" class="text-center" style="padding: 20px;">Caricamento...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- MODALS -->
+  <!-- ============================================================== -->
+
+  <!-- MODAL: NUOVO PERSONALE -->
+  <div class="modal-backdrop" id="modal-nuovo-personale">
+    <div class="modal-box large">
+      <div class="modal-header">
+        <h3 class="modal-title">Nuovo Operatore / Fascicolo Personale</h3>
+        <button class="modal-close" onclick="closeModal('modal-nuovo-personale')">&times;</button>
+      </div>
+      <form id="form-nuovo-personale">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Matricola *</label>
+              <input type="text" id="p-matricola" class="form-control" required placeholder="Es. MAT-15901">
+            </div>
+            <div>
+              <label class="form-label">Codice Fiscale *</label>
+              <input type="text" id="p-cf" class="form-control" required maxlength="16" placeholder="16 caratteri alfanumerici">
+            </div>
+            <div>
+              <label class="form-label">Cognome *</label>
+              <input type="text" id="p-cognome" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Nome *</label>
+              <input type="text" id="p-nome" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Grado / Qualifica *</label>
+              <input type="text" id="p-grado" class="form-control" required placeholder="Es. Capitano, Sergente, Istruttore...">
+            </div>
+            <div>
+              <label class="form-label">Reparto / Ufficio *</label>
+              <select id="p-reparto" class="form-control" required>
+                <option value="Ufficio Piani ed Intelligence">Ufficio Piani ed Intelligence</option>
+                <option value="Sezione Studi Speciali">Sezione Studi Speciali</option>
+                <option value="Sezione Pianificazione Operativa">Sezione Pianificazione Operativa</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Incarico</label>
+              <input type="text" id="p-incarico" class="form-control" placeholder="Es. Capo Sezione, Ufficiale Addetto...">
+            </div>
+            <div>
+              <label class="form-label">Posto Tabellare</label>
+              <input type="text" id="p-posto-tabellare" class="form-control" placeholder="Es. Pos. Tabellare 02/A">
+            </div>
+            <div>
+              <label class="form-label">Stato di Servizio</label>
+              <select id="p-stato" class="form-control">
+                <option value="In Servizio">In Servizio</option>
+                <option value="Congedo">Congedo</option>
+                <option value="Distaccato">Distaccato</option>
+                <option value="Licenza Straordinaria">Licenza Straordinaria</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Data di Nascita *</label>
+              <input type="date" id="p-nascita" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Sesso</label>
+              <select id="p-sesso" class="form-control">
+                <option value="M">Maschile (M)</option>
+                <option value="F">Femminile (F)</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Luogo di Nascita *</label>
+              <input type="text" id="p-luogo-nascita" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Provincia di Nascita</label>
+              <input type="text" id="p-provincia-nascita" class="form-control" maxlength="2" placeholder="Es. RM">
+            </div>
+            <div>
+              <label class="form-label">Data Arruolamento / Assunzione</label>
+              <input type="date" id="p-arruolamento" class="form-control">
+            </div>
+            <div>
+              <label class="form-label">Telefono / Cellulare</label>
+              <input type="text" id="p-telefono" class="form-control" placeholder="+39 ...">
+            </div>
+            <div>
+              <label class="form-label">Email Istituzionale</label>
+              <input type="email" id="p-email-ist" class="form-control" placeholder="nome.cognome@ente.it">
+            </div>
+            <div>
+              <label class="form-label">Email Personale</label>
+              <input type="email" id="p-email-pers" class="form-control">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Indirizzo di Residenza</label>
+              <input type="text" id="p-residenza" class="form-control" placeholder="Via/Piazza, CAP, Città">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Note Generali / Annotazioni</label>
+              <textarea id="p-note" class="form-control" rows="2" placeholder="Eventuali annotazioni sul militare/dipendente..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuovo-personale')">Annulla</button>
+          <button type="submit" class="btn btn-primary">Salva Operatore</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: MODIFICA PERSONALE -->
+  <div class="modal-backdrop" id="modal-modifica-personale">
+    <div class="modal-box large">
+      <div class="modal-header">
+        <h3 class="modal-title">Modifica Dati Operatore</h3>
+        <button class="modal-close" onclick="closeModal('modal-modifica-personale')">&times;</button>
+      </div>
+      <form id="form-modifica-personale">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Matricola *</label>
+              <input type="text" id="edit-p-matricola" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Codice Fiscale *</label>
+              <input type="text" id="edit-p-cf" class="form-control" required maxlength="16">
+            </div>
+            <div>
+              <label class="form-label">Cognome *</label>
+              <input type="text" id="edit-p-cognome" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Nome *</label>
+              <input type="text" id="edit-p-nome" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Grado / Qualifica *</label>
+              <input type="text" id="edit-p-grado" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Reparto / Ufficio *</label>
+              <select id="edit-p-reparto" class="form-control" required>
+                <option value="Ufficio Piani ed Intelligence">Ufficio Piani ed Intelligence</option>
+                <option value="Sezione Studi Speciali">Sezione Studi Speciali</option>
+                <option value="Sezione Pianificazione Operativa">Sezione Pianificazione Operativa</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Incarico</label>
+              <input type="text" id="edit-p-incarico" class="form-control">
+            </div>
+            <div>
+              <label class="form-label">Posto Tabellare</label>
+              <input type="text" id="edit-p-posto-tabellare" class="form-control" placeholder="Es. Pos. Tabellare 02/A">
+            </div>
+            <div>
+              <label class="form-label">Stato di Servizio</label>
+              <select id="edit-p-stato" class="form-control">
+                <option value="In Servizio">In Servizio</option>
+                <option value="Congedo">Congedo</option>
+                <option value="Distaccato">Distaccato</option>
+                <option value="Licenza Straordinaria">Licenza Straordinaria</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Data di Nascita *</label>
+              <input type="date" id="edit-p-nascita" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Sesso</label>
+              <select id="edit-p-sesso" class="form-control">
+                <option value="M">Maschile (M)</option>
+                <option value="F">Femminile (F)</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Luogo di Nascita *</label>
+              <input type="text" id="edit-p-luogo-nascita" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Provincia di Nascita</label>
+              <input type="text" id="edit-p-provincia-nascita" class="form-control" maxlength="2">
+            </div>
+            <div>
+              <label class="form-label">Data Arruolamento / Assunzione</label>
+              <input type="date" id="edit-p-arruolamento" class="form-control">
+            </div>
+            <div>
+              <label class="form-label">Telefono / Cellulare</label>
+              <input type="text" id="edit-p-telefono" class="form-control">
+            </div>
+            <div>
+              <label class="form-label">Email Istituzionale</label>
+              <input type="email" id="edit-p-email-ist" class="form-control">
+            </div>
+            <div>
+              <label class="form-label">Email Personale</label>
+              <input type="email" id="edit-p-email-pers" class="form-control">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Indirizzo di Residenza</label>
+              <input type="text" id="edit-p-residenza" class="form-control">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Note Generali / Annotazioni</label>
+              <textarea id="edit-p-note" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-modifica-personale')">Annulla</button>
+          <button type="submit" class="btn btn-primary">Salva Modifiche</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: NUOVA NOTA CARATTERISTICA -->
+  <div class="modal-backdrop" id="modal-nuova-nota">
+    <div class="modal-box large">
+      <div class="modal-header">
+        <h3 class="modal-title">Registra Documento Caratteristico / Valutativo</h3>
+        <button class="modal-close" onclick="closeModal('modal-nuova-nota')">&times;</button>
+      </div>
+      <form id="form-nuova-nota">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Tipologia Documento *</label>
+              <select id="nota-tipo" class="form-control" required>
+                <option value="Note Caratteristiche">Note Caratteristiche</option>
+                <option value="Scheda Valutativa">Scheda Valutativa</option>
+                <option value="Rapporto Informativo">Rapporto Informativo</option>
+                <option value="Altro">Altro</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Motivo Redazione *</label>
+              <select id="nota-motivo" class="form-control" required>
+                <option value="Ordinaria Annuale">Ordinaria Annuale</option>
+                <option value="Cambio Incarico">Cambio Incarico</option>
+                <option value="Cambio Superiore">Cambio Superiore</option>
+                <option value="Avanzamento">Avanzamento</option>
+                <option value="Straordinaria">Straordinaria</option>
+                <option value="Fine Servizio">Fine Servizio</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Periodo Dal *</label>
+              <input type="date" id="nota-periodo-dal" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Periodo Al *</label>
+              <input type="date" id="nota-periodo-al" class="form-control" required>
+              <span class="form-help">La scadenza della prossima nota viene impostata in automatico a +365 gg da questa data.</span>
+            </div>
+            <div>
+              <label class="form-label">Data Firma Presa Visione Interessato</label>
+              <input type="date" id="nota-firma" class="form-control">
+              <span class="form-help">Data in cui il dipendente ha apposto la firma</span>
+            </div>
+            <div>
+              <label class="form-label">Scadenza Prossima Nota (365 giorni) *</label>
+              <input type="date" id="nota-scadenza" class="form-control" required>
+              <span class="form-help">Calcolata in automatico (+365 gg) o personalizzabile</span>
+            </div>
+            <div>
+              <label class="form-label">Giudizio Finale Complessivo</label>
+              <select id="nota-giudizio" class="form-control">
+                <option value="Eccellente con Lode">Eccellente con Lode</option>
+                <option value="Eccellente">Eccellente</option>
+                <option value="Superiore alla Media">Superiore alla Media</option>
+                <option value="Nella Media">Nella Media</option>
+                <option value="Inferiore alla Media">Inferiore alla Media</option>
+                <option value="Insufficiente">Insufficiente</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Compilatore (Valutatore)</label>
+              <input type="text" id="nota-compilatore" class="form-control" placeholder="Es. Col. A. Mancini">
+            </div>
+            <div>
+              <label class="form-label">Primo Revisore</label>
+              <input type="text" id="nota-revisore1" class="form-control" placeholder="Es. Gen. B. De Luca">
+            </div>
+            <div>
+              <label class="form-label">Secondo Revisore</label>
+              <input type="text" id="nota-revisore2" class="form-control" placeholder="Opzionale">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Annotazioni sul rendimento</label>
+              <textarea id="nota-annotazioni" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuova-nota')">Annulla</button>
+          <button type="submit" class="btn btn-primary">Registra Nota</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: NUOVA PATENTE -->
+  <div class="modal-backdrop" id="modal-nuova-patente">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Aggiungi Patente di Guida</h3>
+        <button class="modal-close" onclick="closeModal('modal-nuova-patente')">&times;</button>
+      </div>
+      <form id="form-nuova-patente">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Tipo Patente *</label>
+              <select id="pat-tipo" class="form-control" required>
+                <option value="Civile">Civile</option>
+                <option value="Servizio/Militare">Servizio / Militare</option>
+                <option value="CQC">CQC (Certificato Qualificazione Conducente)</option>
+                <option value="Altro">Altro</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Categoria *</label>
+              <input type="text" id="pat-categoria" class="form-control" required placeholder="Es. B, C, Mod. 2, Mod. 3...">
+            </div>
+            <div>
+              <label class="form-label">Numero Patente *</label>
+              <input type="text" id="pat-numero" class="form-control" required placeholder="Es. U1D123456X">
+            </div>
+            <div>
+              <label class="form-label">Ente Rilascio *</label>
+              <input type="text" id="pat-ente" class="form-control" required placeholder="Es. M.I.T. - UCO, Comando Generale...">
+            </div>
+            <div>
+              <label class="form-label">Data Rilascio *</label>
+              <input type="date" id="pat-rilascio" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Data Scadenza *</label>
+              <input type="date" id="pat-scadenza" class="form-control" required>
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Limitazioni / Abilitazioni Speciali</label>
+              <input type="text" id="pat-limitazioni" class="form-control" placeholder="Es. Guida veloce, Mezzi blindati, Obbligo lenti...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuova-patente')">Annulla</button>
+          <button type="submit" class="btn btn-primary">Salva Patente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: REGISTRA PASSAPORTO -->
+  <div class="modal-backdrop" id="modal-nuovo-passaporto">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Passaporto di Servizio</h3>
+        <button class="modal-close" onclick="closeModal('modal-nuovo-passaporto')">&times;</button>
+      </div>
+      <form id="form-nuovo-passaporto">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Numero Passaporto *</label>
+              <input type="text" id="pass-numero" class="form-control" required placeholder="Es. PS-123456X">
+            </div>
+            <div>
+              <label class="form-label">Tipo Passaporto</label>
+              <select id="pass-tipo" class="form-control">
+                <option value="Servizio">Servizio</option>
+                <option value="Diplomatico">Diplomatico</option>
+                <option value="Speciale">Speciale</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Data Rilascio *</label>
+              <input type="date" id="pass-rilascio" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Data Scadenza *</label>
+              <input type="date" id="pass-scadenza" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Stato del Libretto</label>
+              <select id="pass-stato" class="form-control">
+                <option value="Valido">Valido</option>
+                <option value="In Rinnovo">In Rinnovo</option>
+                <option value="Scaduto">Scaduto</option>
+                <option value="Restituito">Restituito</option>
+                <option value="Smarrito">Smarrito</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Ubicazione Fisica Custodia</label>
+              <input type="text" id="pass-ubicazione" class="form-control" value="Archivio Ufficio Personale">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Autorità di Rilascio</label>
+              <input type="text" id="pass-autorita" class="form-control" value="Ministero Affari Esteri e Cooperazione Internazionale">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Note / Riferimenti Pratica</label>
+              <input type="text" id="pass-note" class="form-control" placeholder="Missioni all'estero, protocollo...">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuovo-passaporto')">Annulla</button>
+          <button type="submit" class="btn btn-primary">Salva Passaporto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: REGISTRA CORSO FREQUENTATO -->
+  <div class="modal-backdrop" id="modal-nuovo-corso-persona">
+    <div class="modal-box large">
+      <div class="modal-header">
+        <h3 class="modal-title">Registra Corso Frequentato</h3>
+        <button class="modal-close" onclick="closeModal('modal-nuovo-corso-persona')">&times;</button>
+      </div>
+      <form id="form-nuovo-corso-persona">
+        <div class="modal-body">
+          <!-- Switch Modalità: Da Catalogo / Inserimento Manuale -->
+          <div class="mode-switch">
+            <button type="button" class="active" id="btn-mode-corso-cat" onclick="setModalCorsoMode('catalogo')">📚 Seleziona da Catalogo</button>
+            <button type="button" id="btn-mode-corso-man" onclick="setModalCorsoMode('manuale')">✏️ Inserimento Manuale</button>
+          </div>
+
+          <!-- Sezione Selezione da Catalogo -->
+          <div id="sezione-corso-catalogo">
+            <div class="form-group full">
+              <label class="form-label">Seleziona Corso a Catalogo *</label>
+              <select id="corso-select-id" class="form-control" onchange="onCorsoCatalogoSelected()"></select>
+            </div>
+            <!-- Box informativo sui prerequisiti del corso selezionato -->
+            <div id="box-corso-prerequisiti-selected" class="prereq-box" style="display: none; margin-bottom: 16px;">
+              <strong>⚠️ Prerequisiti Richiesti:</strong>
+              <span id="txt-corso-prerequisiti">-</span>
+              <div id="txt-corso-meta" style="margin-top: 4px; font-size: 12px; color: var(--slate-600);"></div>
+            </div>
+          </div>
+
+          <!-- Sezione Inserimento Manuale -->
+          <div id="sezione-corso-manuale" style="display: none;">
+            <div class="form-grid" style="margin-bottom: 16px;">
+              <div class="form-group full">
+                <label class="form-label">Denominazione del Corso *</label>
+                <input type="text" id="man-corso-nome" class="form-control" placeholder="Es. Corso Addestrativo Interforze">
+              </div>
+              <div>
+                <label class="form-label">Ente Erogatore</label>
+                <input type="text" id="man-corso-ente" class="form-control" placeholder="Es. Centro Interforze">
+              </div>
+              <div>
+                <label class="form-label">Durata (Ore)</label>
+                <input type="number" id="man-corso-ore" class="form-control" placeholder="Es. 40">
+              </div>
+              <div class="form-group full">
+                <label class="form-label">Prerequisiti / Requisiti di Accesso</label>
+                <input type="text" id="man-corso-prereq" class="form-control" placeholder="Eventuali prerequisiti di ammissione o idoneità">
+              </div>
+            </div>
+          </div>
+
+          <!-- Dati Comuni della Frequenza -->
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Data Inizio *</label>
+              <input type="date" id="part-inizio" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Data Fine *</label>
+              <input type="date" id="part-fine" class="form-control" required>
+            </div>
+            <div>
+              <label class="form-label">Esito *</label>
+              <select id="part-esito" class="form-control" required>
+                <option value="Superato">Superato</option>
+                <option value="Idoneo">Idoneo</option>
+                <option value="Qualificato">Qualificato</option>
+                <option value="Specializzato">Specializzato</option>
+                <option value="Frequentato">Frequentato</option>
+                <option value="Non Idoneo">Non Idoneo</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Numero Attestato / Protocollo</label>
+              <input type="text" id="part-attestato" class="form-control" placeholder="Es. ATT-2026-001">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Note / Valutazione</label>
+              <input type="text" id="part-note" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuovo-corso-persona')">Annulla</button>
+          <button type="submit" class="btn btn-primary">Registra Corso nel Fascicolo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: NUOVO CORSO A CATALOGO -->
+  <div class="modal-backdrop" id="modal-nuovo-catalogo-corso">
+    <div class="modal-box large">
+      <div class="modal-header">
+        <h3 class="modal-title">Nuovo Corso nel Catalogo Formazione</h3>
+        <button class="modal-close" onclick="closeModal('modal-nuovo-catalogo-corso')">&times;</button>
+      </div>
+      <form id="form-nuovo-catalogo-corso">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Codice Identificativo Corso *</label>
+              <input type="text" id="cat-codice" class="form-control" required placeholder="Es. COR-DEF-06">
+            </div>
+            <div>
+              <label class="form-label">Durata (Ore)</label>
+              <input type="number" id="cat-ore" class="form-control" placeholder="Es. 40">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Denominazione del Corso *</label>
+              <input type="text" id="cat-nome" class="form-control" required placeholder="Es. Difesa Personale e Tecniche di Contatto">
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Ente / Struttura Erogatrice *</label>
+              <input type="text" id="cat-ente" class="form-control" required placeholder="Es. Scuola Addestramento...">
+            </div>
+            <div>
+              <label class="form-label">Validità / Rinnovo (Mesi)</label>
+              <input type="number" id="cat-validita" class="form-control" placeholder="Es. 24 (lasciare vuoto se permanente)">
+              <span class="form-help">Inserire se il brevetto scade periodicamente</span>
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Prerequisiti / Requisiti di Accesso</label>
+              <textarea id="cat-prerequisiti" class="form-control" rows="2" placeholder="Requisiti minimi di idoneità, grado, patenti o corsi propedeutici..."></textarea>
+            </div>
+            <div class="form-group full">
+              <label class="form-label">Descrizione / Obiettivi</label>
+              <textarea id="cat-desc" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-nuovo-catalogo-corso')">Annulla</button>
+          <button type="submit" class="btn btn-primary">Aggiungi a Catalogo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CARICA CATALOGO CORSI DA PDF -->
+  <div class="modal-backdrop" id="modal-upload-catalogo-pdf">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Carica Catalogo Corsi da File PDF</h3>
+        <button class="modal-close" onclick="closeModal('modal-upload-catalogo-pdf')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13.5px; color: var(--slate-600); margin-bottom: 16px;">
+          Carica il catalogo corsi in formato PDF. Il sistema estrarrà automaticamente i corsi, i codici, gli enti erogatori e <strong>tutti i prerequisiti di ammissione</strong> indicati.
+        </p>
+        
+        <div class="dropzone-box" id="pdf-dropzone" onclick="document.getElementById('pdf-file-input').click()">
+          <div class="dropzone-icon">📄</div>
+          <strong style="display: block; font-size: 15px; color: var(--slate-800);">Trascina qui il file PDF del catalogo</strong>
+          <span style="font-size: 12.5px; color: var(--slate-500);">oppure clicca per selezionarlo dal tuo computer</span>
+          <input type="file" id="pdf-file-input" accept=".pdf" style="display: none;" onchange="handlePdfSelected(this.files)">
+        </div>
+
+        <div id="pdf-loading-indicator" style="display: none; margin-top: 20px; text-align: center;">
+          <div style="font-size: 14px; font-weight: 600; color: var(--primary);">
+            ⏳ Analisi ed estrazione dei prerequisiti in corso...
+          </div>
+          <span style="font-size: 12px; color: var(--slate-500);">Operazione completata in pochi secondi tramite motore nativo.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-upload-catalogo-pdf')">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ANTEPRIMA CORSI ESTRATTI DA PDF -->
+  <div class="modal-backdrop" id="modal-anteprima-catalogo-pdf">
+    <div class="modal-box large" style="max-width: 950px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Anteprima Corsi e Prerequisiti Rilevati</h3>
+          <p style="font-size: 12.5px; color: var(--slate-500); margin-top: 2px;">
+            File: <strong id="anteprima-pdf-nome">-</strong> | Corsi rilevati: <strong id="anteprima-pdf-count">0</strong>
+          </p>
+        </div>
+        <button class="modal-close" onclick="closeModal('modal-anteprima-catalogo-pdf')">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height: 65vh;">
+        <div class="alert-banner info" style="margin-bottom: 16px; padding: 10px 14px;">
+          <div>
+            <strong>Verifica e Conferma:</strong> Il sistema ha analizzato il PDF e isolato i requisiti per ciascun corso. Puoi modificare o correggere i campi prima di confermare l'importazione nel database.
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 40px;"><input type="checkbox" id="check-all-anteprima" checked onchange="toggleSelectAllAnteprima(this.checked)"></th>
+                <th>Corso</th>
+                <th>Ente / Durata</th>
+                <th style="min-width: 320px;">Prerequisiti Estratti</th>
+              </tr>
+            </thead>
+            <tbody id="anteprima-corsi-tbody">
+              <!-- Righe dinamiche create via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-anteprima-catalogo-pdf')">Annulla</button>
+        <button type="button" class="btn btn-primary" onclick="confermaImportazioneBatch()">
+          ✅ Conferma e Importa nel Catalogo
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Script logic -->
+  <script src="/js/app.js"></script>
+</body>
+</html>
+
