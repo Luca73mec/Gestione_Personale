@@ -54,4 +54,4 @@ git diff --cached --name-only | grep -Fxq VERSION || {
   exit 1
 }
 git commit -m "Update version to $next_version"
-git push
+git push -u origin HEAD

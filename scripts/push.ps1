@@ -29,4 +29,4 @@ git add -A
 $StagedFiles = git diff --cached --name-only
 if ($StagedFiles -notcontains "VERSION") { throw "VERSION is not staged; refusing to commit" }
 git commit -m "Update version to $NextVersion"
-git push
+git push -u origin HEAD

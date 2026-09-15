@@ -50,11 +50,11 @@ GestionePersonaleWeb/
 
 ## Stato attuale del progetto
 
-Versione corrente: `0.1.1`
+Versione corrente: `0.1.2`
 
 ## Ultimo aggiornamento
 
-2026-09-15 12:49:34+02:00
+2026-09-15 12:50:00+02:00
 
 ## Note per agenti esterni
 
