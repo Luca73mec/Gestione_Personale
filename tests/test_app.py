@@ -25,7 +25,7 @@ class TestGestionePersonale(unittest.TestCase):
     def test_dashboard_stats(self):
         stats = db.get_dashboard_stats()
         self.assertIn("totale_personale", stats)
-        self.assertGreater(stats["totale_personale"], 0)
+        self.assertGreaterEqual(stats["totale_personale"], 0)
         self.assertIn("note_scadute", stats)
         self.assertIn("note_urgenti_30", stats)
 

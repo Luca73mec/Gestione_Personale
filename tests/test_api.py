@@ -48,6 +48,19 @@ class TestApiRoutes(unittest.TestCase):
 
     def setUp(self):
         db.init_db()
+        if len(db.get_all_personale()) == 0:
+            db.create_personale({
+                "matricola": "MAT-DEMO-001",
+                "codice_fiscale": "RSSMRA85M01H501Z",
+                "cognome": "Rossi",
+                "nome": "Mario",
+                "sesso": "M",
+                "data_nascita": "1985-08-01",
+                "luogo_nascita": "Roma",
+                "grado_qualifica": "Caporal Maggiore Scelto",
+                "reparto_ufficio": "Ufficio Piani ed Intelligence",
+                "stato_servizio": "In Servizio"
+            })
 
     def test_get_dashboard(self):
         handler = MockHandler()
@@ -123,6 +136,63 @@ class TestApiRoutes(unittest.TestCase):
         res = handler.get_json()
         self.assertTrue(res["success"])
         self.assertIsInstance(res["data"], list)
+
+    def test_delete_corso(self):
+        # Crea un corso temporaneo
+        cid = db.create_corso({
+            "codice_corso": "TEMP-DEL-01",
+            "denominazione": "Corso Temporaneo da Eliminare",
+            "ente_erogatore": "Centro Sperimentale",
+            "durata_ore": 10
+        })
+        self.assertIsNotNone(cid)
+
+        # Chiamata DELETE via API
+        handler_del = MockHandler()
+        ApiRouter.handle_request(handler_del, "DELETE", f"/api/corsi/{cid}", {})
+        self.assertEqual(handler_del.sent_status, 200)
+        self.assertTrue(handler_del.get_json()["success"])
+
+        # Verifica che non esista più
+        deleted = db.get_corso_by_id(cid)
+        self.assertIsNone(deleted)
+
+    def test_update_corso(self):
+        # 1. Crea un corso
+        cid = db.create_corso({
+            "codice_corso": "COR-TEST-UPD",
+            "denominazione": "Corso Originale",
+            "ente_erogatore": "Ente Alpha",
+            "durata_ore": 20,
+            "validita_mesi": 12,
+            "prerequisiti": "Nessuno"
+        })
+
+        # 2. Aggiorna tramite PUT API
+        handler_put = MockHandler({
+            "codice_corso": "COR-TEST-UPD",
+            "denominazione": "Corso Modificato con Successo",
+            "ente_erogatore": "Ente Beta",
+            "durata_ore": 45,
+            "validita_mesi": 24,
+            "prerequisiti": "Patente Mod. 2",
+            "descrizione": "Descrizione aggiornata"
+        })
+        ApiRouter.handle_request(handler_put, "PUT", f"/api/corsi/{cid}", {})
+        self.assertEqual(handler_put.sent_status, 200)
+        self.assertTrue(handler_put.get_json()["success"])
+
+        # 3. Verifica i dati aggiornati
+        updated = db.get_corso_by_id(cid)
+        self.assertEqual(updated["denominazione"], "Corso Modificato con Successo")
+        self.assertEqual(updated["ente_erogatore"], "Ente Beta")
+        self.assertEqual(updated["durata_ore"], 45)
+        self.assertEqual(updated["validita_mesi"], 24)
+        self.assertEqual(updated["prerequisiti"], "Patente Mod. 2")
+
+        # Pulizia
+        db.delete_corso(cid)
+
 
 if __name__ == "__main__":
     unittest.main()

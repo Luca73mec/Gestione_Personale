@@ -40,7 +40,16 @@ Applicazione web e database relazionale locale per la gestione completa del pers
      - *Selezione da catalogo*: mostra immediatamente i prerequisiti richiesti, l'ente erogatore e la durata del corso selezionato.
      - *Inserimento manuale al volo*: consente di registrare un corso non presente a catalogo definendo direttamente ente, ore e prerequisiti.
 
-6. **Cruscotto di Controllo & Scadenzario Unificato**
+6. **Pianificazione Corsi & Audit Idoneità Candidatura**
+   - **Nuovo modulo "Pianificazione Corsi"**: selezione combinata militare + corso a catalogo con filtri di ricerca in tempo reale.
+   - **Motore di audit incrociato automatico**:
+     - Verifica immediata di servizio attivo vs congedo/sospensione.
+     - Controllo propedeuticità formative superate nel libretto matricolare.
+     - Verifica patenti di guida richieste (civili e militari Mod. 2/3/4) con controllo scadenze.
+     - Controllo regolarità note caratteristiche e requisiti a vista (lingua, idoneità sanitaria, sicurezza).
+   - **Checklist analitica e responso visivo**: semaforo sintetico (🟢 *Candidabile*, 🟡 *Candidabile con Riserva*, 🔴 *Non Candidabile*), percentuale di conformità, raccomandazioni del sistema e pulsante di iscrizione diretta con pre-popolamento.
+
+7. **Cruscotto di Controllo & Scadenzario Unificato**
    - KPI riassuntivi in tempo reale.
    - Vista tabellare ordinata per urgenza per non mancare nessuna scadenza.
    - Funzione di stampa/esportazione scheda fascicolo individuale in formato cartaceo o PDF.
@@ -78,38 +87,42 @@ Apri quindi il tuo browser preferito su:
 
 ```text
 GestionePersonaleWeb/
+├── access/
+│   └── ModGestionePersonale_Office_v3_3420.bas # Modulo VBA Access di riferimento originario
 ├── app/
-│   ├── api.py              # Gestore rotte API REST (CRUD, upload PDF, query scadenze)
-│   ├── pdf_parser.py       # Motore nativo estrazione testo e parsing prerequisiti PDF
-│   └── server.py           # Server HTTP locale multi-threaded
+│   ├── api.py                 # Gestore rotte API REST (CRUD, upload PDF, verifica candidatura)
+│   ├── pdf_parser.py          # Motore nativo estrazione testo e parsing prerequisiti PDF
+│   └── server.py              # Server HTTP locale multi-threaded
 ├── database/
-│   ├── db.py               # Layer di accesso ai dati (context manager e query)
-│   ├── schema.sql          # Schema DDL tabelle, vincoli, indici e viste
-│   ├── seed_data.sql       # Dati dimostrativi iniziali realistici
-│   └── personale.db        # Database SQLite (creato automaticamente all'avvio)
+│   ├── db.py                  # Layer di accesso ai dati e motore audit candidatura
+│   ├── schema.sql             # Schema DDL tabelle, vincoli, indici e viste
+│   ├── seed_data.sql          # Dati dimostrativi iniziali realistici
+│   └── personale.db           # Database SQLite (creato automaticamente all'avvio)
 ├── static/
-│   ├── index.html          # Interfaccia grafica utente (Cruscotto, Schede, Modali, Dropzone)
+│   ├── index.html             # Interfaccia grafica utente (Cruscotto, Schede, Pianificazione)
 │   ├── css/
-│   │   └── style.css       # Stile moderno, badge, alert e foglio per stampa fascicoli
+│   │   └── style.css          # Stile moderno, badge semaforici e foglio stampa
 │   └── js/
-│       └── app.js          # Logica client SPA, chiamate API, upload PDF e calcolo scadenze
+│       └── app.js             # Logica client SPA, audit candidatura e calcolo scadenze
 ├── tests/
-│   ├── test_app.py         # Test automatici database e calcolo 365 giorni
-│   ├── test_api.py         # Test automatici rotte API REST
-│   └── test_pdf_courses.py # Test automatici estrazione PDF, prerequisiti e import batch
-├── run.sh                  # Script di avvio rapido con un clic
-└── README.md               # Documentazione del progetto
+│   ├── test_app.py            # Test automatici database e calcolo 365 giorni
+│   ├── test_api.py            # Test automatici rotte API REST
+│   ├── test_pdf_courses.py    # Test automatici estrazione PDF, prerequisiti e import batch
+│   └── test_pianificazione.py # Test automatici motore verifica idoneità candidatura
+├── run.sh                     # Script di avvio rapido con un clic
+└── README.md                  # Documentazione del progetto
 ```
 
 ---
 
 ## 🧪 Esecuzione dei Test
 
-Per verificare l'integrità del database, delle API e dell'estrazione PDF dei corsi:
+Per verificare l'integrità del database, delle API, dell'estrazione PDF e del modulo di pianificazione:
 
 ```bash
 python3 tests/test_app.py
 python3 tests/test_api.py
 python3 tests/test_pdf_courses.py
+python3 tests/test_pianificazione.py
 ```
 

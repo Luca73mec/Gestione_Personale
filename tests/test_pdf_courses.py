@@ -50,6 +50,19 @@ class TestPdfCourseExtraction(unittest.TestCase):
 
     def setUp(self):
         db.init_db()
+        if len(db.get_all_personale()) == 0:
+            db.create_personale({
+                "matricola": "MAT-DEMO-002",
+                "codice_fiscale": "VRDGPP85M01H501Y",
+                "cognome": "Verdi",
+                "nome": "Giuseppe",
+                "sesso": "M",
+                "data_nascita": "1985-08-01",
+                "luogo_nascita": "Roma",
+                "grado_qualifica": "Sergente",
+                "reparto_ufficio": "Sezione Studi Speciali",
+                "stato_servizio": "In Servizio"
+            })
 
     def test_text_parsing_prerequisites(self):
         sample_text = """

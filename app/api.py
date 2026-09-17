@@ -82,7 +82,16 @@ class ApiRouter:
 
                 # Rotte su specifico dipendente: /api/personale/<id>
                 if len(parts) >= 3:
-                    personale_id = int(parts[2])
+                    ident = parts[2].strip()
+                    if ident.isdigit():
+                        personale_id = int(ident)
+                    else:
+                        p_match = db.get_personale_by_matricola(ident)
+                        if p_match:
+                            personale_id = p_match["id"]
+                        else:
+                            send_error(handler, f"Dipendente non trovato: {ident}", 404)
+                            return
 
                     if len(parts) == 3:
                         if method == "GET":
@@ -128,7 +137,10 @@ class ApiRouter:
 
             # PATENTI DIRETTE: /api/patente/<id>
             if resource == "patente" and len(parts) == 3:
-                patente_id = int(parts[2])
+                if not parts[2].strip().isdigit():
+                    send_error(handler, "ID patente non valido", 400)
+                    return
+                patente_id = int(parts[2].strip())
                 if method == "PUT":
                     body = parse_body(handler)
                     db.update_patente(patente_id, body)
@@ -141,7 +153,10 @@ class ApiRouter:
 
             # NOTE CARATTERISTICHE DIRETTE: /api/nota/<id>
             if resource == "nota" and len(parts) == 3:
-                nota_id = int(parts[2])
+                if not parts[2].strip().isdigit():
+                    send_error(handler, "ID nota non valido", 400)
+                    return
+                nota_id = int(parts[2].strip())
                 if method == "PUT":
                     body = parse_body(handler)
                     db.update_nota_caratteristica(nota_id, body)
@@ -202,6 +217,30 @@ class ApiRouter:
                     }, 201)
                     return
 
+                # GET o POST /api/corsi/verifica-candidatura (verifica idoneità e prerequisiti)
+                if len(parts) == 3 and parts[2] == "verifica-candidatura":
+                    if method == "GET":
+                        personale_id = query_params.get("personale_id", [None])[0]
+                        corso_id = query_params.get("corso_id", [None])[0]
+                    elif method == "POST":
+                        body = parse_body(handler)
+                        personale_id = body.get("personale_id")
+                        corso_id = body.get("corso_id")
+                    else:
+                        send_error(handler, "Metodo non consentito", 405)
+                        return
+
+                    if not personale_id or not corso_id or str(personale_id).lower() in ("undefined", "null", "") or str(corso_id).lower() in ("undefined", "null", ""):
+                        send_error(handler, "Parametri 'personale_id' e 'corso_id' obbligatori e validi", 400)
+                        return
+
+                    try:
+                        valutazione = db.valuta_candidatura_corso(personale_id, corso_id)
+                        send_json(handler, {"success": True, "data": valutazione})
+                    except ValueError as ve:
+                        send_error(handler, str(ve), 404)
+                    return
+
                 if len(parts) == 2 and method == "GET":
                     items = db.get_all_corsi()
                     send_json(handler, {"success": True, "data": items})
@@ -212,8 +251,17 @@ class ApiRouter:
                     send_json(handler, {"success": True, "id": new_id, "message": "Nuovo corso inserito a catalogo"}, 201)
                     return
                 elif len(parts) == 3:
-                    corso_id = int(parts[2])
-                    if method == "PUT":
+                    ident = parts[2].strip()
+                    item = db.get_corso_by_id_or_code(ident)
+                    if not item:
+                        send_error(handler, f"Corso non trovato: {ident}", 404)
+                        return
+                    corso_id = item["id"]
+
+                    if method == "GET":
+                        send_json(handler, {"success": True, "data": item})
+                        return
+                    elif method == "PUT":
                         body = parse_body(handler)
                         db.update_corso(corso_id, body)
                         send_json(handler, {"success": True, "message": "Corso aggiornato"})
@@ -225,7 +273,10 @@ class ApiRouter:
 
             # PARTECIPAZIONI CORSI DIRETTE: /api/partecipazione/<id>
             if resource == "partecipazione" and len(parts) == 3:
-                partecipazione_id = int(parts[2])
+                if not parts[2].strip().isdigit():
+                    send_error(handler, "ID partecipazione non valido", 400)
+                    return
+                partecipazione_id = int(parts[2].strip())
                 if method == "DELETE":
                     db.delete_partecipazione_corso(partecipazione_id)
                     send_json(handler, {"success": True, "message": "Partecipazione eliminata"})
@@ -233,7 +284,10 @@ class ApiRouter:
 
             # PASSAPORTO DIRETTO: /api/passaporto/<id>
             if resource == "passaporto" and len(parts) == 3:
-                passaporto_id = int(parts[2])
+                if not parts[2].strip().isdigit():
+                    send_error(handler, "ID passaporto non valido", 400)
+                    return
+                passaporto_id = int(parts[2].strip())
                 if method == "PUT":
                     body = parse_body(handler)
                     db.update_passaporto(passaporto_id, body)
@@ -248,5 +302,7 @@ class ApiRouter:
             send_error(handler, f"Rotta non trovata: {method} {path}", 404)
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             send_error(handler, f"Errore interno del server: {str(e)}", 500)
 

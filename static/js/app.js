@@ -11,7 +11,10 @@ const AppState = {
   corsiCache: [],
   modalCorsoMode: 'catalogo',
   extractedPdfCourses: [],
-  extractedPdfFilename: ''
+  extractedPdfFilename: '',
+  planMilitariCache: [],
+  planCorsiCache: [],
+  lastAuditResult: null
 };
 
 // ====================================================================
@@ -124,7 +127,7 @@ function navigate(viewName, params = {}) {
     link.classList.toggle('active', link.dataset.view === viewName);
   });
 
-  const views = ['dashboard', 'personale', 'dettaglio-personale', 'scadenzario', 'corsi'];
+  const views = ['dashboard', 'personale', 'dettaglio-personale', 'scadenzario', 'corsi', 'pianificazione'];
   views.forEach(v => {
     const el = document.getElementById(`view-${v}`);
     if (el) el.style.display = (v === viewName) ? 'block' : 'none';
@@ -149,11 +152,22 @@ function navigate(viewName, params = {}) {
   } else if (viewName === 'scadenzario') {
     pageTitle.innerText = 'Scadenzario Generale';
     pageSubtitle.innerText = 'Riepilogo scadenze imminenti e scadute per note caratteristiche, patenti e passaporti';
-    loadScadenzario();
+    loadScadenzario().then(() => {
+      if (params && params.section) {
+        setTimeout(() => {
+          const sec = document.getElementById(`scadenzario-${params.section}`);
+          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 60);
+      }
+    });
   } else if (viewName === 'corsi') {
     pageTitle.innerText = 'Catalogo Formazione e Corsi';
     pageSubtitle.innerText = 'Gestione corsi interni, enti erogatori e abilitazioni periodiche';
     loadCorsiCatalogo();
+  } else if (viewName === 'pianificazione') {
+    pageTitle.innerText = 'Pianificazione Corsi';
+    pageSubtitle.innerText = 'Verifica dei prerequisiti e idoneità alla candidatura corsi per il personale';
+    loadPianificazioneCorsi(params);
   }
 }
 
@@ -304,10 +318,15 @@ function renderPersonaleTable(items) {
         <span class="badge badge-neutral" title="Corsi completati">${p.num_corsi} Corsi</span>
         ${p.num_passaporti > 0 ? '<span class="badge badge-regolare" title="Passaporto di Servizio">PS</span>' : ''}
       </td>
-      <td>
-        <button class="btn btn-primary btn-sm" onclick="navigate('dettaglio-personale', {id: ${p.id}})">
-          Apri Fascicolo
-        </button>
+      <td style="white-space: nowrap;">
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button class="btn btn-primary btn-sm" onclick="navigate('dettaglio-personale', {id: ${p.id}})" title="Apri Fascicolo">
+            Apri Fascicolo
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaPersonaleDaRuolo(${p.id})" title="Elimina militare dal ruolo">
+            🗑️ Elimina
+          </button>
+        </div>
       </td>
     </tr>
   `).join('');
@@ -587,7 +606,7 @@ async function loadCorsiCatalogo() {
     const tbody = document.getElementById('table-corsi-catalogo-body');
 
     if (!res.data || res.data.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="padding: 24px; color: var(--slate-400);">Nessun corso presente a catalogo.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center" style="padding: 24px; color: var(--slate-400);">Nessun corso presente a catalogo.</td></tr>`;
       return;
     }
 
@@ -609,10 +628,64 @@ async function loadCorsiCatalogo() {
           <span class="badge badge-info">${c.num_partecipanti || 0} part.</span>
           ${c.fonte_catalogo && c.fonte_catalogo !== 'Manuale' ? `<br><small style="color: var(--slate-500); font-size: 11px;" title="Importato da PDF">📄 ${c.fonte_catalogo}</small>` : ''}
         </td>
+        <td style="text-align: center; white-space: nowrap;">
+          <button class="btn btn-secondary btn-sm" onclick="apriModaleModificaCorso(${c.id})" title="Modifica corso" style="margin-right: 4px;">
+            ✏️ Modifica
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaCorsoCatalogo(${c.id})" title="Elimina corso dal catalogo">
+            🗑️ Elimina
+          </button>
+        </td>
       </tr>
     `).join('');
   } catch (err) {
     console.error("Errore caricamento catalogo corsi:", err);
+  }
+}
+
+async function apriModaleModificaCorso(id) {
+  let c = (AppState.corsiCache || []).find(x => x.id === id);
+  if (!c) {
+    try {
+      const res = await api(`/api/corsi/${id}`);
+      c = res.data;
+    } catch (err) {
+      console.error("Errore recupero dati corso:", err);
+      return;
+    }
+  }
+  if (!c) return;
+
+  document.getElementById('edit-cat-id').value = c.id;
+  document.getElementById('edit-cat-codice').value = c.codice_corso || '';
+  document.getElementById('edit-cat-nome').value = c.denominazione || '';
+  document.getElementById('edit-cat-ente').value = c.ente_erogatore || '';
+  document.getElementById('edit-cat-ore').value = c.durata_ore || '';
+  document.getElementById('edit-cat-validita').value = c.validita_mesi || '';
+  document.getElementById('edit-cat-prerequisiti').value = c.prerequisiti || '';
+  document.getElementById('edit-cat-desc').value = c.descrizione || '';
+
+  openModal('modal-modifica-catalogo-corso');
+}
+
+async function eliminaCorsoCatalogo(id) {
+  const c = (AppState.corsiCache || []).find(x => x.id === id);
+  const nomeCorso = c ? `il corso "${c.denominazione}" (${c.codice_corso || 'ID ' + id})` : 'questo corso';
+  const numPart = c && c.num_partecipanti ? c.num_partecipanti : 0;
+
+  let msg = `Confermi l'eliminazione definitiva dal catalogo de ${nomeCorso}?`;
+  if (numPart > 0) {
+    msg = `ATTENZIONE: ${nomeCorso} risulta registrato nello storico di ${numPart} militare/i.\n\nEliminando il corso dal catalogo verranno rimosse anche le relative registrazioni collegate nei fascicoli.\n\nSei sicuro di voler procedere con l'eliminazione definitiva?`;
+  }
+
+  if (confirm(msg)) {
+    try {
+      await api(`/api/corsi/${id}`, 'DELETE');
+      showToast('Corso rimosso dal catalogo con successo', 'success');
+      loadCorsiCatalogo();
+    } catch (err) {
+      console.error(err);
+    }
   }
 }
 
@@ -685,6 +758,359 @@ function setModalCorsoMode(mode) {
     inMan.setAttribute('required', 'required');
     selCat.removeAttribute('required');
   }
+}
+
+// ====================================================================
+// 6. PIANIFICAZIONE CORSI & AUDIT PREREQUISITI
+// ====================================================================
+
+async function loadPianificazioneCorsi(params = {}) {
+  try {
+    const [resPers, resCorsi] = await Promise.all([
+      api('/api/personale'),
+      api('/api/corsi')
+    ]);
+
+    AppState.planMilitariCache = resPers.data || [];
+    AppState.planCorsiCache = resCorsi.data || [];
+
+    renderPlanMilitariSelect(AppState.planMilitariCache);
+    renderPlanCorsiSelect(AppState.planCorsiCache);
+
+    if (params.personale_id) {
+      const selM = document.getElementById('plan-select-militare');
+      if (selM) {
+        selM.value = params.personale_id;
+        await onPlanMilitareChange();
+      }
+    }
+
+    if (params.corso_id) {
+      const selC = document.getElementById('plan-select-corso');
+      if (selC) {
+        selC.value = params.corso_id;
+        await onPlanCorsoChange();
+      }
+    }
+  } catch (err) {
+    console.error("Errore inizializzazione modulo pianificazione:", err);
+  }
+}
+
+function renderPlanMilitariSelect(militariList) {
+  const sel = document.getElementById('plan-select-militare');
+  if (!sel) return;
+  const currentVal = sel.value;
+
+  sel.innerHTML = '<option value="">-- Seleziona un militare --</option>' +
+    militariList.map(m => {
+      const repShort = (m.reparto_ufficio || '').replace('Ufficio ', 'Uff. ').replace('Sezione ', 'Sez. ');
+      return `<option value="${m.id}">${m.grado_qualifica} ${m.cognome} ${m.nome} - ${repShort} (${m.matricola})</option>`;
+    }).join('');
+
+  if (currentVal && militariList.some(m => m.id == currentVal)) {
+    sel.value = currentVal;
+  }
+}
+
+function renderPlanCorsiSelect(corsiList) {
+  const sel = document.getElementById('plan-select-corso');
+  if (!sel) return;
+  const currentVal = sel.value;
+
+  sel.innerHTML = '<option value="">-- Seleziona un corso a catalogo --</option>' +
+    corsiList.map(c => {
+      const ore = c.durata_ore ? ` [${c.durata_ore}h]` : '';
+      const cod = c.codice_corso ? `[${c.codice_corso}] ` : '';
+      return `<option value="${c.id}">${cod}${c.denominazione}${ore} (${c.ente_erogatore})</option>`;
+    }).join('');
+
+  if (currentVal && corsiList.some(c => c.id == currentVal)) {
+    sel.value = currentVal;
+  }
+}
+
+function filterPlanMilitari(searchTerm) {
+  const term = (searchTerm || '').trim().toLowerCase();
+  if (!term) {
+    renderPlanMilitariSelect(AppState.planMilitariCache);
+    return;
+  }
+  const filtered = AppState.planMilitariCache.filter(m => {
+    return (m.cognome && m.cognome.toLowerCase().includes(term)) ||
+           (m.nome && m.nome.toLowerCase().includes(term)) ||
+           (m.matricola && m.matricola.toLowerCase().includes(term)) ||
+           (m.grado_qualifica && m.grado_qualifica.toLowerCase().includes(term)) ||
+           (m.reparto_ufficio && m.reparto_ufficio.toLowerCase().includes(term));
+  });
+  renderPlanMilitariSelect(filtered);
+}
+
+function filterPlanCorsi(searchTerm) {
+  const term = (searchTerm || '').trim().toLowerCase();
+  if (!term) {
+    renderPlanCorsiSelect(AppState.planCorsiCache);
+    return;
+  }
+  const filtered = AppState.planCorsiCache.filter(c => {
+    return (c.denominazione && c.denominazione.toLowerCase().includes(term)) ||
+           (c.codice_corso && c.codice_corso.toLowerCase().includes(term)) ||
+           (c.ente_erogatore && c.ente_erogatore.toLowerCase().includes(term)) ||
+           (c.prerequisiti && c.prerequisiti.toLowerCase().includes(term));
+  });
+  renderPlanCorsiSelect(filtered);
+}
+
+async function onPlanMilitareChange() {
+  const sel = document.getElementById('plan-select-militare');
+  const card = document.getElementById('plan-card-militare');
+  const auditBox = document.getElementById('plan-audit-container');
+  if (!sel || !card) return;
+
+  const pid = (sel.value || '').trim();
+  if (!pid || pid === 'undefined' || pid === 'null') {
+    card.style.display = 'none';
+    if (auditBox) auditBox.style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await api(`/api/personale/${encodeURIComponent(pid)}`);
+    const p = res.data;
+    if (!p) return;
+
+    document.getElementById('plan-m-nome').textContent = `${p.cognome} ${p.nome}`;
+    document.getElementById('plan-m-grado').textContent = `${p.grado_qualifica} | Matricola: ${p.matricola}`;
+    document.getElementById('plan-m-reparto').textContent = p.reparto_ufficio || '-';
+    document.getElementById('plan-m-incarico').textContent = p.incarico || '-';
+    document.getElementById('plan-m-posto').textContent = p.posto_tabellare || '-';
+
+    const statoBadge = document.getElementById('plan-m-stato-badge');
+    if (p.stato_servizio === 'In Servizio') {
+      statoBadge.className = 'badge badge-success';
+      statoBadge.textContent = 'In Servizio Attivo';
+    } else {
+      statoBadge.className = 'badge badge-danger';
+      statoBadge.textContent = p.stato_servizio || 'Non Attivo';
+    }
+
+    const badgesContainer = document.getElementById('plan-m-badges');
+    let badgesHtml = '';
+    (p.patenti || []).forEach(pat => {
+      const isScad = pat.stato_scadenza === 'SCADUTA';
+      badgesHtml += `<span class="badge ${isScad ? 'badge-danger' : 'badge-info'}" style="font-size: 11px;">🪪 ${pat.categoria}</span>`;
+    });
+    const superati = (p.corsi || []).filter(c => ['Superato', 'Idoneo', 'Qualificato', 'Specializzato'].includes(c.esito));
+    if (superati.length > 0) {
+      badgesHtml += `<span class="badge badge-success" style="font-size: 11px;">🎓 ${superati.length} corsi superati</span>`;
+    }
+    badgesContainer.innerHTML = badgesHtml;
+    card.style.display = 'block';
+
+    checkAndRunPlanAudit();
+  } catch (err) {
+    console.error("Errore caricamento dettaglio militare per pianificazione:", err);
+  }
+}
+
+async function onPlanCorsoChange() {
+  const sel = document.getElementById('plan-select-corso');
+  const card = document.getElementById('plan-card-corso');
+  const auditBox = document.getElementById('plan-audit-container');
+  if (!sel || !card) return;
+
+  const cid = (sel.value || '').trim();
+  if (!cid || cid === 'undefined' || cid === 'null') {
+    card.style.display = 'none';
+    if (auditBox) auditBox.style.display = 'none';
+    return;
+  }
+
+  const c = (AppState.planCorsiCache || []).find(x => x.id == cid || (x.codice_corso && x.codice_corso.toLowerCase() === cid.toLowerCase()));
+  if (c) {
+    renderPlanCorsoCard(c);
+  } else {
+    try {
+      const res = await api(`/api/corsi/${encodeURIComponent(cid)}`);
+      renderPlanCorsoCard(res.data);
+    } catch (err) {
+      console.warn("Corso non reperibile dal catalogo:", err);
+      card.style.display = 'none';
+    }
+  }
+
+  checkAndRunPlanAudit();
+}
+
+function renderPlanCorsoCard(c) {
+  const card = document.getElementById('plan-card-corso');
+  if (!card || !c) return;
+
+  document.getElementById('plan-c-codice').textContent = c.codice_corso || 'COR-GEN';
+  document.getElementById('plan-c-nome').textContent = c.denominazione;
+  document.getElementById('plan-c-ore-badge').textContent = c.durata_ore ? `${c.durata_ore} Ore` : 'N/D';
+  document.getElementById('plan-c-ente').textContent = c.ente_erogatore || '-';
+  document.getElementById('plan-c-validita').textContent = c.validita_mesi ? `${c.validita_mesi} mesi` : 'Permanente / Senza Scadenza';
+  document.getElementById('plan-c-prereq-text').textContent = c.prerequisiti || 'Nessun prerequisito specifico indicato a catalogo.';
+
+  card.style.display = 'block';
+}
+
+function checkAndRunPlanAudit() {
+  const selM = document.getElementById('plan-select-militare');
+  const selC = document.getElementById('plan-select-corso');
+  const mVal = selM ? (selM.value || '').trim() : '';
+  const cVal = selC ? (selC.value || '').trim() : '';
+
+  if (mVal && cVal && mVal !== 'undefined' && cVal !== 'undefined' && mVal !== 'null' && cVal !== 'null') {
+    eseguiVerificaCandidatura(mVal, cVal);
+  } else {
+    const auditBox = document.getElementById('plan-audit-container');
+    if (auditBox) auditBox.style.display = 'none';
+  }
+}
+
+async function eseguiVerificaCandidatura(personaleId, corsoId) {
+  const auditBox = document.getElementById('plan-audit-container');
+  if (!auditBox) return;
+
+  const pId = (personaleId || '').toString().trim();
+  const cId = (corsoId || '').toString().trim();
+  if (!pId || !cId || pId === 'undefined' || cId === 'undefined' || pId === 'null' || cId === 'null') {
+    auditBox.style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await api(`/api/corsi/verifica-candidatura?personale_id=${encodeURIComponent(pId)}&corso_id=${encodeURIComponent(cId)}`);
+    const data = res.data;
+    AppState.lastAuditResult = data;
+
+    // 1. Badge Globale
+    const globalBadge = document.getElementById('plan-audit-global-badge');
+    let badgeHtml = '';
+    if (data.esito_globale === 'IDONEO') {
+      badgeHtml = `<span class="badge badge-success" style="font-size: 14px; padding: 6px 14px;">🟢 ${data.badge_label} (${data.percentuale_conformita}%)</span>`;
+    } else if (data.esito_globale === 'IDONEO_CON_RISERVA') {
+      badgeHtml = `<span class="badge badge-warning" style="font-size: 14px; padding: 6px 14px;">🟡 ${data.badge_label} (${data.percentuale_conformita}%)</span>`;
+    } else {
+      badgeHtml = `<span class="badge badge-danger" style="font-size: 14px; padding: 6px 14px;">🔴 ${data.badge_label} (${data.percentuale_conformita}%)</span>`;
+    }
+    globalBadge.innerHTML = badgeHtml;
+
+    // 2. Banner Sintetico
+    const banner = document.getElementById('plan-audit-banner');
+    const bTitle = document.getElementById('plan-audit-banner-title');
+    const bDesc = document.getElementById('plan-audit-banner-desc');
+
+    banner.className = `alert-banner ${data.badge_class === 'success' ? 'success' : (data.badge_class === 'warning' ? 'warning' : 'danger')}`;
+    if (data.esito_globale === 'IDONEO') {
+      bTitle.textContent = `✅ CANDIDATURA IDONEA: ${data.personale.grado_qualifica} ${data.personale.nominativo}`;
+      bDesc.textContent = `Tutti i requisiti per il corso "${data.corso.denominazione}" risultano soddisfatti nel libretto matricolare.`;
+    } else if (data.esito_globale === 'IDONEO_CON_RISERVA') {
+      bTitle.textContent = `⚠️ CANDIDATURA AMMISSIBILE CON RISERVA: ${data.personale.grado_qualifica} ${data.personale.nominativo}`;
+      bDesc.textContent = `Sono presenti prerequisiti qualitativi o scadenze imminenti che richiedono accertamento d'ufficio prima dell'invio al corso.`;
+    } else {
+      bTitle.textContent = `❌ CANDIDATURA NON IDONEA: ${data.personale.grado_qualifica} ${data.personale.nominativo}`;
+      bDesc.textContent = `Sono stati riscontrati requisiti bloccanti non soddisfatti (es. corso propedeutico non effettuato, patente assente o scaduta, stato matricolare non attivo).`;
+    }
+
+    // 3. Tabella Checklist Requisiti
+    const tbody = document.getElementById('plan-audit-tbody');
+    tbody.innerHTML = (data.checks || []).map(chk => {
+      let statusBadge = '';
+      if (chk.esito === 'SODDISFATTO') {
+        statusBadge = '<span class="badge badge-success" style="font-size:12px;">✓ Soddisfatto</span>';
+      } else if (chk.esito === 'CONSEGUITO_RINNOVO') {
+        statusBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:12px;">Aggiornamento</span>';
+      } else if (chk.esito === 'GIA_CONSEGUITO') {
+        statusBadge = '<span class="badge badge-warning" style="font-size:12px;">Già Conseguito</span>';
+      } else if (chk.esito === 'IN_SCADENZA') {
+        statusBadge = '<span class="badge badge-warning" style="font-size:12px;">⚠️ In Scadenza</span>';
+      } else if (chk.esito === 'DA_VERIFICARE') {
+        statusBadge = '<span class="badge badge-warning" style="font-size:12px;">🔍 Da Verificare</span>';
+      } else if (chk.esito === 'AVVISO') {
+        statusBadge = '<span class="badge badge-warning" style="font-size:12px;">Avviso</span>';
+      } else {
+        statusBadge = '<span class="badge badge-danger" style="font-size:12px;">✗ Bloccante</span>';
+      }
+
+      return `
+        <tr>
+          <td><strong style="color: var(--slate-800);">${chk.categoria}</strong></td>
+          <td>${chk.regola}</td>
+          <td style="color: var(--slate-700);">${chk.riscontro}</td>
+          <td style="text-align: center;">${statusBadge}</td>
+        </tr>
+      `;
+    }).join('');
+
+    // 4. Raccomandazioni
+    const recoBox = document.getElementById('plan-audit-raccomandazioni-box');
+    const recoList = document.getElementById('plan-audit-raccomandazioni-list');
+    if (data.raccomandazioni && data.raccomandazioni.length > 0) {
+      recoList.innerHTML = data.raccomandazioni.map(r => `<li style="margin-bottom: 4px;">${r}</li>`).join('');
+      recoBox.style.display = 'block';
+    } else {
+      recoBox.style.display = 'none';
+    }
+
+    // 5. Pulsante Iscrizione
+    const btnIscrivi = document.getElementById('btn-iscrivi-da-pianificazione');
+    const footnote = document.getElementById('plan-audit-footnote');
+    if (data.esito_globale === 'NON_IDONEO') {
+      footnote.textContent = '⚠️ Requisiti bloccanti non soddisfatti: l\'iscrizione è sconsigliata fino a regolarizzazione.';
+      btnIscrivi.className = 'btn btn-secondary';
+      btnIscrivi.textContent = 'Forza Comunque Iscrizione';
+    } else {
+      footnote.textContent = 'Tutto pronto: puoi procedere direttamente alla formalizzazione dell\'iscrizione.';
+      btnIscrivi.className = 'btn btn-primary';
+      btnIscrivi.textContent = '🚀 Procedi con l\'Iscrizione / Candidatura';
+    }
+
+    auditBox.style.display = 'block';
+    auditBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    console.error("Errore durante l'audit di idoneità:", err);
+  }
+}
+
+function resetPianificazione() {
+  const selM = document.getElementById('plan-select-militare');
+  const selC = document.getElementById('plan-select-corso');
+  const searchM = document.getElementById('plan-search-militare');
+  const searchC = document.getElementById('plan-search-corso');
+  const cardM = document.getElementById('plan-card-militare');
+  const cardC = document.getElementById('plan-card-corso');
+  const auditBox = document.getElementById('plan-audit-container');
+
+  if (selM) selM.value = '';
+  if (selC) selC.value = '';
+  if (searchM) searchM.value = '';
+  if (searchC) searchC.value = '';
+  if (cardM) cardM.style.display = 'none';
+  if (cardC) cardC.style.display = 'none';
+  if (auditBox) auditBox.style.display = 'none';
+
+  renderPlanMilitariSelect(AppState.planMilitariCache);
+  renderPlanCorsiSelect(AppState.planCorsiCache);
+  AppState.lastAuditResult = null;
+}
+
+async function avviaIscrizioneDaPianificazione() {
+  if (!AppState.lastAuditResult) return;
+  const { personale, corso } = AppState.lastAuditResult;
+
+  AppState.currentPersonId = personale.id;
+  await popolaSelectCorsi();
+
+  const selCorso = document.getElementById('corso-select-id');
+  if (selCorso) {
+    selCorso.value = corso.id;
+    onCorsoCatalogoSelected();
+  }
+
+  openModal('modal-nuovo-corso-persona');
 }
 
 // ====================================================================
@@ -952,6 +1378,37 @@ function setupCatalogoForm() {
   });
 }
 
+// --- Modifica Corso a Catalogo ---
+function setupModificaCatalogoForm() {
+  const form = document.getElementById('form-modifica-catalogo-corso');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('edit-cat-id').value;
+    if (!id) return;
+
+    const data = {
+      codice_corso: document.getElementById('edit-cat-codice').value.trim(),
+      denominazione: document.getElementById('edit-cat-nome').value.trim(),
+      ente_erogatore: document.getElementById('edit-cat-ente').value.trim(),
+      durata_ore: document.getElementById('edit-cat-ore').value ? parseInt(document.getElementById('edit-cat-ore').value) : null,
+      validita_mesi: document.getElementById('edit-cat-validita').value ? parseInt(document.getElementById('edit-cat-validita').value) : null,
+      prerequisiti: document.getElementById('edit-cat-prerequisiti').value.trim(),
+      descrizione: document.getElementById('edit-cat-desc').value.trim()
+    };
+
+    try {
+      await api(`/api/corsi/${id}`, 'PUT', data);
+      showToast('Corso aggiornato con successo!', 'success');
+      closeModal('modal-modifica-catalogo-corso');
+      form.reset();
+      loadCorsiCatalogo();
+    } catch (err) {
+      console.error(err);
+    }
+  });
+}
+
 // ====================================================================
 // AZIONI DI CANCELLAZIONE
 // ====================================================================
@@ -1002,6 +1459,21 @@ async function eliminaPersonaleCorrente() {
       showToast('Dipendente rimosso dal database', 'success');
       navigate('personale');
     } catch (err) {}
+  }
+}
+
+async function eliminaPersonaleDaRuolo(id) {
+  const p = AppState.personaleCache.find(x => x.id === id);
+  const nominativo = p ? `${p.grado_qualifica} ${p.cognome} ${p.nome} (Matr. ${p.matricola})` : 'questo militare';
+
+  if (confirm(`ATTENZIONE: Stai per eliminare definitivamente ${nominativo} dal database, inclusi tutti i dati correlati (patenti, note caratteristiche, corsi, passaporto).\n\nConfermi l'eliminazione definitiva?`)) {
+    try {
+      await api(`/api/personale/${id}`, 'DELETE');
+      showToast(`${nominativo} rimosso dal database`, 'success');
+      loadPersonaleList();
+    } catch (err) {
+      console.error(err);
+    }
   }
 }
 
@@ -1186,6 +1658,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPartecipazioneForm();
   setupPassaportoForm();
   setupCatalogoForm();
+  setupModificaCatalogoForm();
   setupPdfDropzone();
 
   // Search filter triggers
@@ -1207,6 +1680,14 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       document.querySelectorAll('.modal-backdrop.active').forEach(m => m.classList.remove('active'));
+    }
+  });
+
+  // Allow keyboard interaction (Enter / Space) on stat-cards
+  document.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.classList && e.target.classList.contains('stat-card')) {
+      e.preventDefault();
+      e.target.click();
     }
   });
 

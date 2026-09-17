@@ -12,6 +12,7 @@ Applicazione web locale per la gestione del personale, dei fascicoli matricolari
 
 ```text
 GestionePersonaleWeb/
+├── access/                      # Modulo VBA Access di origine/riferimento
 ├── app/                         # Backend HTTP e parser PDF
 ├── database/                    # SQLite, schema e dati iniziali
 ├── static/                      # Frontend HTML, CSS e JavaScript
@@ -19,7 +20,6 @@ GestionePersonaleWeb/
 ├── scripts/                     # Automazione versionamento e push
 ├── .github/workflows/           # Automazione GitHub Releases
 ├── .gitignore                   # Esclusioni Git per cache e database locale
-├── CATALOGO CIFIGE ed._2022-24.pdf  # Catalogo corsi sorgente
 ├── run.sh                       # Avvio locale dell'applicazione
 ├── VERSION                      # Versione semantica MAJOR.MINOR.PATCH
 ├── PROJECT_MANIFEST.md          # Contesto e regole per gli agenti
@@ -53,11 +53,11 @@ GestionePersonaleWeb/
 
 ## Stato attuale del progetto
 
-Versione corrente: `0.1.3`
+Versione corrente: `0.1.4`
 
 ## Ultimo aggiornamento
 
-2026-09-15 13:00:29+02:00
+2026-09-17 12:09:02+02:00
 
 ## Note per agenti esterni
 

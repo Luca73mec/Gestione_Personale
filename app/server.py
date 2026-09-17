@@ -104,7 +104,8 @@ class AppRequestHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         """Formattazione personalizzata dei log a video."""
-        print(f"[{self.log_date_time_string()}] {self.command} {self.path} - {args[0]}")
+        code = args[1] if len(args) > 1 else (args[0] if len(args) > 0 else "-")
+        print(f"[{self.log_date_time_string()}] {self.command} {self.path} -> {code}")
 
 
 def run(host="127.0.0.1", port=8080):

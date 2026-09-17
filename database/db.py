@@ -187,6 +187,27 @@ def get_all_personale(search=None, reparto=None, stato=None):
         return rows_to_list(conn.execute(query, params).fetchall())
 
 
+def get_personale_by_matricola(matricola):
+    """Restituisce il dettaglio completo di un militare cercandolo per matricola."""
+    if not matricola:
+        return None
+    with get_db_connection() as conn:
+        p = conn.execute("SELECT id FROM personale WHERE LOWER(matricola) = LOWER(?)", (str(matricola).strip(),)).fetchone()
+        if p:
+            return get_personale_by_id(p["id"])
+        return None
+
+
+def get_personale_by_id_or_matricola(identifier):
+    """Restituisce il dipendente per ID intero o per matricola."""
+    if identifier is None:
+        return None
+    ident_str = str(identifier).strip()
+    if ident_str.isdigit():
+        return get_personale_by_id(int(ident_str))
+    return get_personale_by_matricola(ident_str)
+
+
 def get_personale_by_id(personale_id):
     """Scheda anagrafica completa con patenti, corsi, note e passaporti."""
     with get_db_connection() as conn:
@@ -515,6 +536,322 @@ def get_all_corsi():
         """).fetchall())
 
 
+def get_corso_by_id(corso_id):
+    """Restituisce il dettaglio completo di un corso dal catalogo per ID numerico."""
+    if corso_id is None:
+        return None
+    try:
+        cid = int(corso_id)
+    except (ValueError, TypeError):
+        return None
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT * FROM corso WHERE id = ?", (cid,)).fetchone()
+        return row_to_dict(row) if row else None
+
+
+def get_corso_by_id_or_code(identifier):
+    """Restituisce un corso dal catalogo cercandolo per ID numerico o per codice_corso."""
+    if identifier is None:
+        return None
+    ident_str = str(identifier).strip()
+    if ident_str.isdigit():
+        item = get_corso_by_id(int(ident_str))
+        if item:
+            return item
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT * FROM corso WHERE LOWER(codice_corso) = LOWER(?)", (ident_str,)).fetchone()
+        if not row:
+            # Fallback ricerca per denominazione esatta
+            row = conn.execute("SELECT * FROM corso WHERE LOWER(denominazione) = LOWER(?)", (ident_str,)).fetchone()
+        return row_to_dict(row) if row else None
+
+
+def valuta_candidatura_corso(personale_id, corso_id):
+    """
+    Esegue l'audit e la verifica di idoneità per la candidatura di un militare a un corso.
+    Supporta ID numerici, matricola o codice corso.
+    Analizza:
+    - Stato di servizio attivo
+    - Eventuale corso già conseguito (e se con validità periodica per eventuale rinnovo)
+    - Prerequisiti formativi (corsi propedeutici superati)
+    - Prerequisiti di abilitazione alla guida (patenti civili e militari con stato di scadenza)
+    - Note caratteristiche (regolarità ultimi 365 giorni)
+    - Idoneità speciali (NOS, sicurezza, idoneità sanitaria, lingua)
+    """
+    p = get_personale_by_id_or_matricola(personale_id)
+    c = get_corso_by_id_or_code(corso_id)
+    if not p:
+        raise ValueError(f"Militare con riferimento '{personale_id}' non trovato")
+    if not c:
+        raise ValueError(f"Corso con riferimento '{corso_id}' non trovato")
+
+    checks = []
+    raccomandazioni = []
+    has_blocking = False
+    has_warning = False
+
+    # 1. Verifica Stato di Servizio
+    stato_serv = (p.get("stato_servizio") or "In Servizio").strip()
+    if stato_serv.lower() == "in servizio":
+        checks.append({
+            "categoria": "Stato di Servizio",
+            "regola": "Servizio attivo",
+            "riscontro": f"Militare regolarmente in servizio ({p.get('grado_qualifica')} presso {p.get('reparto_ufficio')})",
+            "esito": "SODDISFATTO",
+            "tipo": "success"
+        })
+    else:
+        has_blocking = True
+        checks.append({
+            "categoria": "Stato di Servizio",
+            "regola": "Servizio attivo",
+            "riscontro": f"Militare non in servizio attivo (Attuale: {stato_serv})",
+            "esito": "BLOCCANTE",
+            "tipo": "danger"
+        })
+        raccomandazioni.append("La candidatura non può procedere fino al rientro in servizio attivo.")
+
+    # 2. Verifica se il corso è già stato conseguito dal militare
+    corsi_effettuati = p.get("corsi", [])
+    stesso_corso = None
+    for pc in corsi_effettuati:
+        if pc.get("corso_id") == c["id"] or (pc.get("denominazione") and pc.get("denominazione").strip().lower() == c["denominazione"].strip().lower()):
+            if pc.get("esito") in ("Superato", "Idoneo", "Qualificato", "Specializzato"):
+                stesso_corso = pc
+                break
+
+    if stesso_corso:
+        validita = c.get("validita_mesi")
+        data_fine = stesso_corso.get("data_fine")
+        if validita and data_fine:
+            checks.append({
+                "categoria": "Frequenza Precedente",
+                "regola": f"Validità corso ({validita} mesi)",
+                "riscontro": f"Corso già conseguito il {data_fine} (Esito: {stesso_corso.get('esito')}). Candidatura utile come rinnovo/aggiornamento periodico.",
+                "esito": "CONSEGUITO_RINNOVO",
+                "tipo": "info"
+            })
+            raccomandazioni.append("Il militare ha già superato questo corso. La partecipazione è intesa come aggiornamento / rinnovo validità.")
+        else:
+            checks.append({
+                "categoria": "Frequenza Precedente",
+                "regola": "Abilitazione già in possesso",
+                "riscontro": f"Corso già superato il {data_fine or '-'} con attestato {stesso_corso.get('numero_attestato') or 'N/D'}.",
+                "esito": "GIA_CONSEGUITO",
+                "tipo": "warning"
+            })
+            has_warning = True
+            raccomandazioni.append("Il corso risulta già conseguito a titolo permanente nel fascicolo personale.")
+
+    # 3. Analisi dei Prerequisiti del corso
+    prereq_raw = (c.get("prerequisiti") or "").strip()
+    patenti_militare = p.get("patenti", [])
+    note_militare = p.get("note_caratteristiche", [])
+
+    if not prereq_raw or prereq_raw.lower() in ("nessun prerequisito specifico indicato", "nessuno", "nessun prerequisito", "-"):
+        checks.append({
+            "categoria": "Prerequisiti di Accesso",
+            "regola": "Nessun prerequisito vincolante",
+            "riscontro": "Il corso è ad accesso diretto senza propedeuticità o abilitazioni obbligatorie.",
+            "esito": "SODDISFATTO",
+            "tipo": "success"
+        })
+    else:
+        import re
+        parts = re.split(r'[;,\n]+', prereq_raw)
+        for part in parts:
+            req = part.strip()
+            req = re.sub(r'^[-\*\•\d\.\)\s]+', '', req).strip()
+            if not req or len(req) < 3:
+                continue
+
+            req_lower = req.lower()
+
+            # A) Requisito di Patente di Guida
+            if any(k in req_lower for k in ("patente", "mod.", "modello", "cqc")):
+                patente_trovata = None
+                for pat in patenti_militare:
+                    cat = (pat.get("categoria") or "").lower()
+                    if ("mod. 3" in req_lower or "mod 3" in req_lower) and ("mod. 3" in cat or "mod 3" in cat):
+                        patente_trovata = pat
+                        break
+                    elif ("mod. 2" in req_lower or "mod 2" in req_lower) and ("mod. 2" in cat or "mod 2" in cat):
+                        patente_trovata = pat
+                        break
+                    elif ("mod. 4" in req_lower or "mod 4" in req_lower) and ("mod. 4" in cat or "mod 4" in cat):
+                        patente_trovata = pat
+                        break
+                    elif "patente b" in req_lower and "b" in cat:
+                        patente_trovata = pat
+                        break
+                    elif "patente c" in req_lower and "c" in cat:
+                        patente_trovata = pat
+                        break
+                    elif cat in req_lower:
+                        patente_trovata = pat
+                        break
+
+                if patente_trovata:
+                    stato_scad = patente_trovata.get("stato_scadenza", "REGOLARE")
+                    scad_str = patente_trovata.get("data_scadenza", "")
+                    if stato_scad == "SCADUTA":
+                        has_blocking = True
+                        checks.append({
+                            "categoria": "Patente di Guida",
+                            "regola": req,
+                            "riscontro": f"Patente {patente_trovata.get('categoria')} registrata ma SCADUTA il {scad_str}",
+                            "esito": "BLOCCANTE",
+                            "tipo": "danger"
+                        })
+                        raccomandazioni.append(f"È necessario procedere al rinnovo della {patente_trovata.get('categoria')} prima della candidatura.")
+                    elif stato_scad in ("URGENTE_30GG", "IN_SCADENZA_60GG"):
+                        has_warning = True
+                        checks.append({
+                            "categoria": "Patente di Guida",
+                            "regola": req,
+                            "riscontro": f"Patente {patente_trovata.get('categoria')} presente ma IN SCADENZA a breve ({scad_str})",
+                            "esito": "IN_SCADENZA",
+                            "tipo": "warning"
+                        })
+                        raccomandazioni.append("La patente richiesta scadrà a breve. Verificare il rinnovo in concomitanza del corso.")
+                    else:
+                        checks.append({
+                            "categoria": "Patente di Guida",
+                            "regola": req,
+                            "riscontro": f"Patente {patente_trovata.get('categoria')} attiva e valida (Scadenza: {scad_str})",
+                            "esito": "SODDISFATTO",
+                            "tipo": "success"
+                        })
+                else:
+                    has_blocking = True
+                    checks.append({
+                        "categoria": "Patente di Guida",
+                        "regola": req,
+                        "riscontro": "Nessuna patente corrispondente rilevata nel fascicolo del militare",
+                        "esito": "BLOCCANTE",
+                        "tipo": "danger"
+                    })
+                    raccomandazioni.append(f"Il militare deve prima conseguire la patente richiesta: '{req}'.")
+
+            # B) Requisito di Corso Propedeutico o Qualifica
+            elif any(k in req_lower for k in ("corso", "qualifica", "abilitazione", "analista base", "osint base", "cartografica", "base reti")):
+                corso_trovato = None
+                for c_eff in corsi_effettuati:
+                    den_c = (c_eff.get("denominazione") or "").lower()
+                    if (den_c in req_lower or any(word in den_c for word in req_lower.split() if len(word) > 4)) and c_eff.get("esito") in ("Superato", "Idoneo", "Qualificato", "Specializzato"):
+                        corso_trovato = c_eff
+                        break
+
+                if corso_trovato:
+                    checks.append({
+                        "categoria": "Propedeuticità Formativa",
+                        "regola": req,
+                        "riscontro": f"Corso propedeutico superato: '{corso_trovato.get('denominazione')}' (Attestato: {corso_trovato.get('numero_attestato') or 'Registrato'})",
+                        "esito": "SODDISFATTO",
+                        "tipo": "success"
+                    })
+                else:
+                    has_blocking = True
+                    checks.append({
+                        "categoria": "Propedeuticità Formativa",
+                        "regola": req,
+                        "riscontro": "Requisito formativo non riscontrato nello storico dei corsi superati",
+                        "esito": "BLOCCANTE",
+                        "tipo": "danger"
+                    })
+                    raccomandazioni.append(f"Verificare o iscrivere il militare al corso propedeutico '{req}'.")
+
+            # C) Altri requisiti specifici (Sicurezza, Lingua, Idoneità Sanitaria, Armi, ecc.)
+            else:
+                has_warning = True
+                checks.append({
+                    "categoria": "Requisito da Accertare",
+                    "regola": req,
+                    "riscontro": "Accertamento d'ufficio richiesto (verificare attestazione del Comando o idoneità specifica)",
+                    "esito": "DA_VERIFICARE",
+                    "tipo": "warning"
+                })
+                raccomandazioni.append(f"Accertare il requisito '{req}' a vista tramite documentazione matricolare o idoneità medica/di sicurezza.")
+
+    # 4. Verifica Note Caratteristiche (regolarità generale del fascicolo)
+    if note_militare:
+        ultima_nota = note_militare[0]
+        stato_nota = ultima_nota.get("stato_scadenza", "REGOLARE")
+        if stato_nota == "SCADUTA":
+            has_warning = True
+            checks.append({
+                "categoria": "Documenti di Valutazione",
+                "regola": "Documento caratteristico in corso di validità (≤ 365 gg)",
+                "riscontro": f"Ultima nota caratteristica del {ultima_nota.get('periodo_al')} risultante SCADUTA",
+                "esito": "AVVISO",
+                "tipo": "warning"
+            })
+            raccomandazioni.append("Si raccomanda l'aggiornamento della scheda valutativa prima della missione/corso.")
+        else:
+            checks.append({
+                "categoria": "Documenti di Valutazione",
+                "regola": "Regolarità note caratteristiche",
+                "riscontro": f"Nota valida fino al {ultima_nota.get('data_prossima_scadenza')} (Giudizio: {ultima_nota.get('giudizio_finale') or 'Favorevole'})",
+                "esito": "SODDISFATTO",
+                "tipo": "success"
+            })
+    else:
+        checks.append({
+            "categoria": "Documenti di Valutazione",
+            "regola": "Note caratteristiche",
+            "riscontro": "Nessuna nota caratteristica registrata nel fascicolo (personale neo-assegnato o in attesa di prima valutazione)",
+            "esito": "INFO",
+            "tipo": "info"
+        })
+
+    # Calcolo Esito Globale
+    if has_blocking:
+        esito_globale = "NON_IDONEO"
+        badge_label = "Non Candidabile"
+        badge_class = "danger"
+    elif has_warning:
+        esito_globale = "IDONEO_CON_RISERVA"
+        badge_label = "Candidabile con Riserva"
+        badge_class = "warning"
+    else:
+        esito_globale = "IDONEO"
+        badge_label = "Pienamente Candidabile"
+        badge_class = "success"
+
+    # Percentuale di conformità (esclude note puramente informative)
+    totali_valutabili = [chk for chk in checks if chk["esito"] != "INFO"]
+    soddisfatti = sum(1 for chk in totali_valutabili if chk["esito"] in ("SODDISFATTO", "CONSEGUITO_RINNOVO"))
+    percentuale = int((soddisfatti / len(totali_valutabili)) * 100) if totali_valutabili else 100
+
+    return {
+        "personale": {
+            "id": p["id"],
+            "nominativo": f"{p['cognome']} {p['nome']}",
+            "grado_qualifica": p.get("grado_qualifica"),
+            "matricola": p.get("matricola"),
+            "reparto_ufficio": p.get("reparto_ufficio"),
+            "incarico": p.get("incarico"),
+            "posto_tabellare": p.get("posto_tabellare"),
+            "stato_servizio": p.get("stato_servizio")
+        },
+        "corso": {
+            "id": c["id"],
+            "denominazione": c["denominazione"],
+            "codice_corso": c.get("codice_corso"),
+            "ente_erogatore": c.get("ente_erogatore"),
+            "durata_ore": c.get("durata_ore"),
+            "validita_mesi": c.get("validita_mesi"),
+            "prerequisiti": c.get("prerequisiti")
+        },
+        "esito_globale": esito_globale,
+        "badge_label": badge_label,
+        "badge_class": badge_class,
+        "percentuale_conformita": percentuale,
+        "checks": checks,
+        "raccomandazioni": raccomandazioni
+    }
+
+
 def create_corso(data):
     """Crea un nuovo corso nel catalogo generale."""
     with get_db_connection() as conn:
@@ -539,6 +876,8 @@ def create_corso(data):
 
 def update_corso(corso_id, data):
     with get_db_connection() as conn:
+        cur = conn.execute("SELECT fonte_catalogo FROM corso WHERE id = ?", (corso_id,)).fetchone()
+        fonte = data.get("fonte_catalogo") or (cur["fonte_catalogo"] if cur else "Manuale")
         conn.execute("""
             UPDATE corso SET
                 codice_corso = ?,
@@ -557,7 +896,7 @@ def update_corso(corso_id, data):
             data.get("durata_ore"),
             data.get("validita_mesi") if data.get("validita_mesi") else None,
             data.get("prerequisiti", ""),
-            data.get("fonte_catalogo", "Manuale"),
+            fonte,
             data.get("descrizione", ""),
             corso_id
         ))
@@ -635,7 +974,9 @@ def import_corsi_batch(courses_list, fonte_catalogo="Catalogo PDF"):
 
 
 def delete_corso(corso_id):
+    """Elimina un corso dal catalogo e rimuove eventuali partecipazioni collegate."""
     with get_db_connection() as conn:
+        conn.execute("DELETE FROM partecipazione_corso WHERE corso_id = ?", (corso_id,))
         conn.execute("DELETE FROM corso WHERE id = ?", (corso_id,))
         conn.commit()
         return True

@@ -3,3 +3,4 @@ __pycache__/
 database/personale.db
 database/personale.db-*
 .DS_Store
+**/.DS_Store
