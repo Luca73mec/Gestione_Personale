@@ -26,7 +26,7 @@ Private Sub CreaTabelleLocali()
     Set db = CurrentDb
 
     CreaTabella db, "personale", _
-        "CREATE TABLE personale (id AUTOINCREMENT CONSTRAINT pk_personale PRIMARY KEY, " & _
+        "CREATE TABLE personale (id COUNTER PRIMARY KEY, " & _
         "matricola TEXT(50), codice_fiscale TEXT(16), cognome TEXT(100), nome TEXT(100), " & _
         "sesso TEXT(10), data_nascita DATETIME, luogo_nascita TEXT(150), provincia_nascita TEXT(10), " & _
         "grado_qualifica TEXT(150), reparto_ufficio TEXT(150), incarico TEXT(200), posto_tabellare TEXT(200), " & _
@@ -35,31 +35,31 @@ Private Sub CreaTabelleLocali()
         "lingua_inglese TEXT(100), note_generali MEMO, created_at DATETIME, updated_at DATETIME)"
 
     CreaTabella db, "patente", _
-        "CREATE TABLE patente (id AUTOINCREMENT CONSTRAINT pk_patente PRIMARY KEY, personale_id LONG, " & _
+        "CREATE TABLE patente (id COUNTER PRIMARY KEY, personale_id LONG, " & _
         "tipo_patente TEXT(30), categoria TEXT(100), numero_patente TEXT(100), ente_rilascio TEXT(200), " & _
         "data_rilascio DATETIME, data_scadenza DATETIME, limitazioni_abilitazioni TEXT(255), created_at DATETIME)"
 
     CreaTabella db, "corso", _
-        "CREATE TABLE corso (id AUTOINCREMENT CONSTRAINT pk_corso PRIMARY KEY, codice_corso TEXT(100), " & _
+        "CREATE TABLE corso (id COUNTER PRIMARY KEY, codice_corso TEXT(100), " & _
         "denominazione TEXT(255), ente_erogatore TEXT(200), durata_settimane LONG, durata_ore LONG, " & _
         "validita_mesi LONG, requisiti_sicurezza MEMO, precedenti_formativi MEMO, precedenti_operativi MEMO, " & _
         "selezioni MEMO, conoscenza_lingua TEXT(255), altri_requisiti MEMO, prerequisiti MEMO, " & _
         "fonte_catalogo TEXT(255), descrizione MEMO, created_at DATETIME)"
 
     CreaTabella db, "partecipazione_corso", _
-        "CREATE TABLE partecipazione_corso (id AUTOINCREMENT CONSTRAINT pk_partecipazione PRIMARY KEY, " & _
+        "CREATE TABLE partecipazione_corso (id COUNTER PRIMARY KEY, " & _
         "personale_id LONG, corso_id LONG, data_inizio DATETIME, data_fine DATETIME, esito TEXT(30), " & _
         "numero_attestato TEXT(100), data_scadenza_abilitazione DATETIME, note MEMO, created_at DATETIME)"
 
     CreaTabella db, "nota_caratteristica", _
-        "CREATE TABLE nota_caratteristica (id AUTOINCREMENT CONSTRAINT pk_nota PRIMARY KEY, personale_id LONG, " & _
+        "CREATE TABLE nota_caratteristica (id COUNTER PRIMARY KEY, personale_id LONG, " & _
         "tipologia_documento TEXT(50), motivo_redazione TEXT(50), periodo_dal DATETIME, periodo_al DATETIME, " & _
         "data_firma_interessato DATETIME, data_prossima_scadenza DATETIME, giudizio_finale TEXT(50), " & _
         "compilatore TEXT(200), primo_revisore TEXT(200), secondo_revisore TEXT(200), annotazioni MEMO, " & _
         "created_at DATETIME)"
 
     CreaTabella db, "passaporto_servizio", _
-        "CREATE TABLE passaporto_servizio (id AUTOINCREMENT CONSTRAINT pk_passaporto PRIMARY KEY, " & _
+        "CREATE TABLE passaporto_servizio (id COUNTER PRIMARY KEY, " & _
         "personale_id LONG, numero_passaporto TEXT(100), tipo_passaporto TEXT(30), autorita_rilascio TEXT(255), " & _
         "data_rilascio DATETIME, data_scadenza DATETIME, stato TEXT(30), ubicazione_custodia TEXT(200), " & _
         "note MEMO, created_at DATETIME)"
