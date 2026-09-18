@@ -80,11 +80,11 @@ End Function
 
 Private Sub CreaQueryLocali()
     EliminaQueryLocale "qryLocalePersonale"
-    CreaQueryLocale "qryLocalePersonale", _
+    CreaQueryLocal "qryLocalePersonale", _
         "SELECT id, matricola, cognome, nome, grado_qualifica, reparto_ufficio, stato_servizio FROM personale"
 
     EliminaQueryLocale "qryLocaleScadenzario"
-    CreaQueryLocale "qryLocaleScadenzario", _
+    CreaQueryLocal "qryLocaleScadenzario", _
         "SELECT 'Nota' AS tipo_scadenza, p.id AS personale_id, p.cognome, p.nome, " & _
         "n.data_prossima_scadenza AS data_scadenza FROM personale AS p INNER JOIN " & _
         "nota_caratteristica AS n ON p.id = n.personale_id WHERE n.data_prossima_scadenza <= Date()+60 " & _
@@ -95,7 +95,7 @@ Private Sub CreaQueryLocali()
         "ORDER BY data_scadenza"
 End Sub
 
-Private Sub CreaQueryLocale(ByVal queryName As String, ByVal sqlText As String)
+Private Sub CreaQueryLocal(ByVal queryName As String, ByVal sqlText As String)
     Dim queryDef As DAO.QueryDef
     Set queryDef = CurrentDb.CreateQueryDef(queryName, sqlText)
 End Sub
