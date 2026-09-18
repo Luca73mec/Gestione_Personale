@@ -32,7 +32,7 @@ Private Sub CreaTabelleLocali()
         "grado_qualifica TEXT(150), reparto_ufficio TEXT(150), incarico TEXT(200), posto_tabellare TEXT(200), " & _
         "data_arruolamento_assunzione DATETIME, stato_servizio TEXT(50), email_istituzionale TEXT(254), " & _
         "email_personale TEXT(254), telefono TEXT(50), indirizzo_residenza TEXT(255), livello_nos TEXT(100), " & _
-        "lingua_inglese TEXT(100), note_generali MEMO, created_at DATETIME, updated_at DATETIME)"
+        "lingua_inglese TEXT(100), note_generali LONGTEXT, created_at DATETIME, updated_at DATETIME)"
 
     CreaTabella db, "patente", _
         "CREATE TABLE patente (id COUNTER PRIMARY KEY, personale_id LONG, " & _
@@ -42,27 +42,27 @@ Private Sub CreaTabelleLocali()
     CreaTabella db, "corso", _
         "CREATE TABLE corso (id COUNTER PRIMARY KEY, codice_corso TEXT(100), " & _
         "denominazione TEXT(255), ente_erogatore TEXT(200), durata_settimane LONG, durata_ore LONG, " & _
-        "validita_mesi LONG, requisiti_sicurezza MEMO, precedenti_formativi MEMO, precedenti_operativi MEMO, " & _
-        "selezioni MEMO, conoscenza_lingua TEXT(255), altri_requisiti MEMO, prerequisiti MEMO, " & _
-        "fonte_catalogo TEXT(255), descrizione MEMO, created_at DATETIME)"
+        "validita_mesi LONG, requisiti_sicurezza LONGTEXT, precedenti_formativi LONGTEXT, precedenti_operativi LONGTEXT, " & _
+        "selezioni LONGTEXT, conoscenza_lingua TEXT(255), altri_requisiti LONGTEXT, prerequisiti LONGTEXT, " & _
+        "fonte_catalogo TEXT(255), descrizione LONGTEXT, created_at DATETIME)"
 
     CreaTabella db, "partecipazione_corso", _
         "CREATE TABLE partecipazione_corso (id COUNTER PRIMARY KEY, " & _
         "personale_id LONG, corso_id LONG, data_inizio DATETIME, data_fine DATETIME, esito TEXT(30), " & _
-        "numero_attestato TEXT(100), data_scadenza_abilitazione DATETIME, note MEMO, created_at DATETIME)"
+        "numero_attestato TEXT(100), data_scadenza_abilitazione DATETIME, note LONGTEXT, created_at DATETIME)"
 
     CreaTabella db, "nota_caratteristica", _
         "CREATE TABLE nota_caratteristica (id COUNTER PRIMARY KEY, personale_id LONG, " & _
         "tipologia_documento TEXT(50), motivo_redazione TEXT(50), periodo_dal DATETIME, periodo_al DATETIME, " & _
         "data_firma_interessato DATETIME, data_prossima_scadenza DATETIME, giudizio_finale TEXT(50), " & _
-        "compilatore TEXT(200), primo_revisore TEXT(200), secondo_revisore TEXT(200), annotazioni MEMO, " & _
+        "compilatore TEXT(200), primo_revisore TEXT(200), secondo_revisore TEXT(200), annotazioni LONGTEXT, " & _
         "created_at DATETIME)"
 
     CreaTabella db, "passaporto_servizio", _
         "CREATE TABLE passaporto_servizio (id COUNTER PRIMARY KEY, " & _
         "personale_id LONG, numero_passaporto TEXT(100), tipo_passaporto TEXT(30), autorita_rilascio TEXT(255), " & _
         "data_rilascio DATETIME, data_scadenza DATETIME, stato TEXT(30), ubicazione_custodia TEXT(200), " & _
-        "note MEMO, created_at DATETIME)"
+        "note LONGTEXT, created_at DATETIME)"
 End Sub
 
 Private Sub CreaTabella(ByVal db As DAO.Database, ByVal tableName As String, ByVal sqlText As String)
