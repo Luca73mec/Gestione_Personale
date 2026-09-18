@@ -9,6 +9,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
+try:
+    from .cifige_data import CIFIGE_COURSES
+except (ImportError, ValueError):
+    from database.cifige_data import CIFIGE_COURSES
+
 DB_DIR = Path(__file__).resolve().parent
 DB_FILE = DB_DIR / "personale.db"
 SCHEMA_FILE = DB_DIR / "schema.sql"
@@ -51,19 +56,38 @@ def init_db(force=False):
         try:
             with open(SCHEMA_FILE, "r", encoding="utf-8") as f:
                 conn.executescript(f.read())
-            # Verifica se la colonna posto_tabellare esiste già in personale
+
+            # Verifica colonne in personale
             cursor = conn.execute("PRAGMA table_info(personale);")
             columns = [row[1] for row in cursor.fetchall()]
             if "posto_tabellare" not in columns:
                 conn.execute("ALTER TABLE personale ADD COLUMN posto_tabellare TEXT;")
+            if "livello_nos" not in columns:
+                conn.execute("ALTER TABLE personale ADD COLUMN livello_nos TEXT DEFAULT 'Riservato';")
+            if "lingua_inglese" not in columns:
+                conn.execute("ALTER TABLE personale ADD COLUMN lingua_inglese TEXT DEFAULT 'NATO JFLT 8';")
 
-            # Verifica colonne prerequisiti e fonte_catalogo in corso
+            # Verifica colonne in corso
             cursor = conn.execute("PRAGMA table_info(corso);")
             corso_cols = [row[1] for row in cursor.fetchall()]
             if "prerequisiti" not in corso_cols:
                 conn.execute("ALTER TABLE corso ADD COLUMN prerequisiti TEXT;")
             if "fonte_catalogo" not in corso_cols:
                 conn.execute("ALTER TABLE corso ADD COLUMN fonte_catalogo TEXT DEFAULT 'Manuale';")
+            if "durata_settimane" not in corso_cols:
+                conn.execute("ALTER TABLE corso ADD COLUMN durata_settimane INTEGER;")
+            if "requisiti_sicurezza" not in corso_cols:
+                conn.execute("ALTER TABLE corso ADD COLUMN requisiti_sicurezza TEXT;")
+            if "precedenti_formativi" not in corso_cols:
+                conn.execute("ALTER TABLE corso ADD COLUMN precedenti_formativi TEXT;")
+            if "precedenti_operativi" not in corso_cols:
+                conn.execute("ALTER TABLE corso ADD COLUMN precedenti_operativi TEXT;")
+            if "selezioni" not in corso_cols:
+                conn.execute("ALTER TABLE corso ADD COLUMN selezioni TEXT;")
+            if "conoscenza_lingua" not in corso_cols:
+                conn.execute("ALTER TABLE corso ADD COLUMN conoscenza_lingua TEXT;")
+            if "altri_requisiti" not in corso_cols:
+                conn.execute("ALTER TABLE corso ADD COLUMN altri_requisiti TEXT;")
             conn.commit()
         finally:
             conn.close()
@@ -283,8 +307,8 @@ def create_personale(data):
                 matricola, codice_fiscale, cognome, nome, sesso, data_nascita, luogo_nascita,
                 provincia_nascita, grado_qualifica, reparto_ufficio, incarico, posto_tabellare,
                 data_arruolamento_assunzione, stato_servizio, email_istituzionale, email_personale,
-                telefono, indirizzo_residenza, note_generali
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                telefono, indirizzo_residenza, livello_nos, lingua_inglese, note_generali
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("matricola"),
             data.get("codice_fiscale", "").upper(),
@@ -304,6 +328,8 @@ def create_personale(data):
             data.get("email_personale"),
             data.get("telefono"),
             data.get("indirizzo_residenza"),
+            data.get("livello_nos", "Riservato"),
+            data.get("lingua_inglese", "NATO JFLT 8"),
             data.get("note_generali")
         ))
         conn.commit()
@@ -333,6 +359,8 @@ def update_personale(personale_id, data):
                 email_personale = ?,
                 telefono = ?,
                 indirizzo_residenza = ?,
+                livello_nos = COALESCE(?, livello_nos),
+                lingua_inglese = COALESCE(?, lingua_inglese),
                 note_generali = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -355,6 +383,8 @@ def update_personale(personale_id, data):
             data.get("email_personale"),
             data.get("telefono"),
             data.get("indirizzo_residenza"),
+            data.get("livello_nos"),
+            data.get("lingua_inglese"),
             data.get("note_generali"),
             personale_id
         ))
@@ -570,13 +600,15 @@ def valuta_candidatura_corso(personale_id, corso_id):
     """
     Esegue l'audit e la verifica di idoneità per la candidatura di un militare a un corso.
     Supporta ID numerici, matricola o codice corso.
-    Analizza:
-    - Stato di servizio attivo
-    - Eventuale corso già conseguito (e se con validità periodica per eventuale rinnovo)
-    - Prerequisiti formativi (corsi propedeutici superati)
-    - Prerequisiti di abilitazione alla guida (patenti civili e militari con stato di scadenza)
-    - Note caratteristiche (regolarità ultimi 365 giorni)
-    - Idoneità speciali (NOS, sicurezza, idoneità sanitaria, lingua)
+    Analizza in modo strutturato:
+    - 1. Stato di Servizio attivo
+    - 2. Eventuale frequenza precedente (corso già conseguito / validità rinnovo)
+    - 3. Requisiti di Sicurezza (confronto livello NOS militare vs NOS richiesto dal corso)
+    - 4. Precedenti Formativi (corsi propedeutici obbligatori o auspicabili)
+    - 5. Conoscenza Lingua (NATO JFLT / SLP)
+    - 6. Patenti di Guida (Civili o Militari es. Mod. 2 / Mod. 3 e scadenze)
+    - 7. Precedenti Operativi (anzianità di impiego specialistico)
+    - 8. Selezioni e Idoneità Speciali (prove attitudinali, visite sanitarie SMI / al volo)
     """
     p = get_personale_by_id_or_matricola(personale_id)
     c = get_corso_by_id_or_code(corso_id)
@@ -636,174 +668,304 @@ def valuta_candidatura_corso(personale_id, corso_id):
             checks.append({
                 "categoria": "Frequenza Precedente",
                 "regola": "Abilitazione già in possesso",
-                "riscontro": f"Corso già superato il {data_fine or '-'} con attestato {stesso_corso.get('numero_attestato') or 'N/D'}.",
+                "riscontro": f"Corso già superato il {data_fine or '-'} con attestato {stesso_corso.get('numero_attestato') or 'Registrato'}.",
                 "esito": "GIA_CONSEGUITO",
                 "tipo": "warning"
             })
             has_warning = True
             raccomandazioni.append("Il corso risulta già conseguito a titolo permanente nel fascicolo personale.")
 
-    # 3. Analisi dei Prerequisiti del corso
-    prereq_raw = (c.get("prerequisiti") or "").strip()
-    patenti_militare = p.get("patenti", [])
-    note_militare = p.get("note_caratteristiche", [])
+    # 3. REQUISITI DI SICUREZZA (NOS)
+    import re
+    nos_req = (c.get("requisiti_sicurezza") or "").strip()
+    if not nos_req and (c.get("prerequisiti") or ""):
+        nos_m = re.search(r"\b(?:NOS\b[^\n,;\.]*|Nulla\s+Osta[^\n,;\.]*|Segretissimo|Segreto|Riservato)", c.get("prerequisiti"), re.IGNORECASE)
+        if nos_m:
+            nos_req = nos_m.group(0).strip()
 
-    if not prereq_raw or prereq_raw.lower() in ("nessun prerequisito specifico indicato", "nessuno", "nessun prerequisito", "-"):
+    nos_posseduto = (p.get("livello_nos") or "Riservato").strip()
+
+    def nos_rank(text):
+        t = (text or "").lower()
+        if any(k in t for k in ("cosmic", "segretissimo", "top secret")):
+            return 3
+        elif any(k in t for k in ("segreto", "nato secret")):
+            return 2
+        elif any(k in t for k in ("riservato", "confidential")):
+            return 1
+        elif any(k in t for k in ("adeguato", "in base")):
+            return 1
+        return 0
+
+    rank_req = nos_rank(nos_req)
+    rank_poss = nos_rank(nos_posseduto)
+
+    if not nos_req or "nessun" in nos_req.lower():
         checks.append({
-            "categoria": "Prerequisiti di Accesso",
-            "regola": "Nessun prerequisito vincolante",
-            "riscontro": "Il corso è ad accesso diretto senza propedeuticità o abilitazioni obbligatorie.",
+            "categoria": "Sicurezza (NOS)",
+            "regola": "Nessun NOS vincolante",
+            "riscontro": f"Abilitazione ordinaria (NOS militare: {nos_posseduto})",
+            "esito": "SODDISFATTO",
+            "tipo": "success"
+        })
+    elif "adeguato" in nos_req.lower():
+        checks.append({
+            "categoria": "Sicurezza (NOS)",
+            "regola": nos_req,
+            "riscontro": f"NOS posseduto: {nos_posseduto}. Verificare congruità formale con l'incarico/designazione.",
+            "esito": "DA_VERIFICARE",
+            "tipo": "warning"
+        })
+    elif rank_poss >= rank_req:
+        checks.append({
+            "categoria": "Sicurezza (NOS)",
+            "regola": f"Prescritto {nos_req}",
+            "riscontro": f"Abilitazione posseduta: '{nos_posseduto}' (Soddisfa il livello richiesto '{nos_req}')",
             "esito": "SODDISFATTO",
             "tipo": "success"
         })
     else:
-        import re
-        parts = re.split(r'[;,\n]+', prereq_raw)
-        for part in parts:
-            req = part.strip()
-            req = re.sub(r'^[-\*\•\d\.\)\s]+', '', req).strip()
-            if not req or len(req) < 3:
+        has_blocking = True
+        checks.append({
+            "categoria": "Sicurezza (NOS)",
+            "regola": f"Prescritto {nos_req}",
+            "riscontro": f"Abilitazione posseduta: '{nos_posseduto}' INSUFFICIENTE per il livello prescritto ({nos_req})",
+            "esito": "BLOCCANTE",
+            "tipo": "danger"
+        })
+        raccomandazioni.append(f"È necessario avviare l'istruttoria di concessione del NOS '{nos_req}' prima dell'invio al corso.")
+
+    # 4. PRECEDENTI FORMATIVI (PROPEDEUTICITÀ)
+    form_req = (c.get("precedenti_formativi") or "").strip()
+    if not form_req and (c.get("prerequisiti") or ""):
+        prop_m = re.search(r"(?:Propedeuticit[àa]|Propedeutico|Corsi\s+propedeutici|Precedenti\s+formativi)\s*[:\-]?\s*([^\n;\.]{4,100})", c.get("prerequisiti"), re.IGNORECASE)
+        if prop_m:
+            form_req = prop_m.group(1).strip()
+        else:
+            corsi_trovati = re.findall(r"(?:Corso\s+[A-Z0-9\s/°\-_]{3,40}(?:\([^\)]+\))?)", c.get("prerequisiti"), re.IGNORECASE)
+            if corsi_trovati:
+                form_req = ", ".join(dict.fromkeys(corsi_trovati))
+
+    if not form_req or form_req.lower().startswith("nessun"):
+        checks.append({
+            "categoria": "Precedenti Formativi",
+            "regola": "Accesso diretto",
+            "riscontro": "Nessun corso propedeutico obbligatorio prescritto a catalogo.",
+            "esito": "SODDISFATTO",
+            "tipo": "success"
+        })
+    else:
+        parti_corsi = re.split(r'[,;\n]+|(?:\s+e\s+Corso\b)', form_req, flags=re.IGNORECASE)
+        for part in parti_corsi:
+            p_clean = part.strip()
+            if not p_clean or len(p_clean) < 4:
                 continue
+            p_clean = re.sub(r'^(?:propedeutico\s*[:\-])\s*', '', p_clean, flags=re.IGNORECASE).strip()
+            is_auspicabile = "auspicabil" in p_clean.lower() or "consigliat" in p_clean.lower()
+            clean_titolo = re.sub(r'\s*\((?:obbligatorio|auspicabile|consigliato)[^\)]*\)', '', p_clean, flags=re.IGNORECASE).strip()
 
-            req_lower = req.lower()
-
-            # A) Requisito di Patente di Guida
-            if any(k in req_lower for k in ("patente", "mod.", "modello", "cqc")):
-                patente_trovata = None
-                for pat in patenti_militare:
-                    cat = (pat.get("categoria") or "").lower()
-                    if ("mod. 3" in req_lower or "mod 3" in req_lower) and ("mod. 3" in cat or "mod 3" in cat):
-                        patente_trovata = pat
-                        break
-                    elif ("mod. 2" in req_lower or "mod 2" in req_lower) and ("mod. 2" in cat or "mod 2" in cat):
-                        patente_trovata = pat
-                        break
-                    elif ("mod. 4" in req_lower or "mod 4" in req_lower) and ("mod. 4" in cat or "mod 4" in cat):
-                        patente_trovata = pat
-                        break
-                    elif "patente b" in req_lower and "b" in cat:
-                        patente_trovata = pat
-                        break
-                    elif "patente c" in req_lower and "c" in cat:
-                        patente_trovata = pat
-                        break
-                    elif cat in req_lower:
-                        patente_trovata = pat
+            trovato = None
+            for ce in corsi_effettuati:
+                den_ce = (ce.get("denominazione") or "").lower()
+                clean_norm = clean_titolo.lower()
+                words = [w.lower() for w in clean_norm.split() if len(w) > 3 and w.lower() not in ("corso", "delle", "degli", "della", "dell", "per")]
+                if clean_norm in den_ce or (words and sum(1 for w in words if w in den_ce) >= min(2, len(words))):
+                    if ce.get("esito") in ("Superato", "Idoneo", "Qualificato", "Specializzato"):
+                        trovato = ce
                         break
 
-                if patente_trovata:
-                    stato_scad = patente_trovata.get("stato_scadenza", "REGOLARE")
-                    scad_str = patente_trovata.get("data_scadenza", "")
-                    if stato_scad == "SCADUTA":
-                        has_blocking = True
-                        checks.append({
-                            "categoria": "Patente di Guida",
-                            "regola": req,
-                            "riscontro": f"Patente {patente_trovata.get('categoria')} registrata ma SCADUTA il {scad_str}",
-                            "esito": "BLOCCANTE",
-                            "tipo": "danger"
-                        })
-                        raccomandazioni.append(f"È necessario procedere al rinnovo della {patente_trovata.get('categoria')} prima della candidatura.")
-                    elif stato_scad in ("URGENTE_30GG", "IN_SCADENZA_60GG"):
-                        has_warning = True
-                        checks.append({
-                            "categoria": "Patente di Guida",
-                            "regola": req,
-                            "riscontro": f"Patente {patente_trovata.get('categoria')} presente ma IN SCADENZA a breve ({scad_str})",
-                            "esito": "IN_SCADENZA",
-                            "tipo": "warning"
-                        })
-                        raccomandazioni.append("La patente richiesta scadrà a breve. Verificare il rinnovo in concomitanza del corso.")
-                    else:
-                        checks.append({
-                            "categoria": "Patente di Guida",
-                            "regola": req,
-                            "riscontro": f"Patente {patente_trovata.get('categoria')} attiva e valida (Scadenza: {scad_str})",
-                            "esito": "SODDISFATTO",
-                            "tipo": "success"
-                        })
-                else:
-                    has_blocking = True
-                    checks.append({
-                        "categoria": "Patente di Guida",
-                        "regola": req,
-                        "riscontro": "Nessuna patente corrispondente rilevata nel fascicolo del militare",
-                        "esito": "BLOCCANTE",
-                        "tipo": "danger"
-                    })
-                    raccomandazioni.append(f"Il militare deve prima conseguire la patente richiesta: '{req}'.")
-
-            # B) Requisito di Corso Propedeutico o Qualifica
-            elif any(k in req_lower for k in ("corso", "qualifica", "abilitazione", "analista base", "osint base", "cartografica", "base reti")):
-                corso_trovato = None
-                for c_eff in corsi_effettuati:
-                    den_c = (c_eff.get("denominazione") or "").lower()
-                    if (den_c in req_lower or any(word in den_c for word in req_lower.split() if len(word) > 4)) and c_eff.get("esito") in ("Superato", "Idoneo", "Qualificato", "Specializzato"):
-                        corso_trovato = c_eff
-                        break
-
-                if corso_trovato:
-                    checks.append({
-                        "categoria": "Propedeuticità Formativa",
-                        "regola": req,
-                        "riscontro": f"Corso propedeutico superato: '{corso_trovato.get('denominazione')}' (Attestato: {corso_trovato.get('numero_attestato') or 'Registrato'})",
-                        "esito": "SODDISFATTO",
-                        "tipo": "success"
-                    })
-                else:
-                    has_blocking = True
-                    checks.append({
-                        "categoria": "Propedeuticità Formativa",
-                        "regola": req,
-                        "riscontro": "Requisito formativo non riscontrato nello storico dei corsi superati",
-                        "esito": "BLOCCANTE",
-                        "tipo": "danger"
-                    })
-                    raccomandazioni.append(f"Verificare o iscrivere il militare al corso propedeutico '{req}'.")
-
-            # C) Altri requisiti specifici (Sicurezza, Lingua, Idoneità Sanitaria, Armi, ecc.)
-            else:
-                has_warning = True
+            if trovato:
                 checks.append({
-                    "categoria": "Requisito da Accertare",
-                    "regola": req,
-                    "riscontro": "Accertamento d'ufficio richiesto (verificare attestazione del Comando o idoneità specifica)",
-                    "esito": "DA_VERIFICARE",
-                    "tipo": "warning"
+                    "categoria": "Precedenti Formativi",
+                    "regola": p_clean,
+                    "riscontro": f"Propedeuticità soddisfatta: '{trovato.get('denominazione')}' superato il {trovato.get('data_fine')} (Attestato: {trovato.get('numero_attestato') or 'Registrato'})",
+                    "esito": "SODDISFATTO",
+                    "tipo": "success"
                 })
-                raccomandazioni.append(f"Accertare il requisito '{req}' a vista tramite documentazione matricolare o idoneità medica/di sicurezza.")
+            else:
+                if is_auspicabile:
+                    has_warning = True
+                    checks.append({
+                        "categoria": "Precedenti Formativi",
+                        "regola": p_clean,
+                        "riscontro": f"Corso auspicabile '{clean_titolo}' non riscontrato nel fascicolo (requisito non vincolante)",
+                        "esito": "DA_VERIFICARE",
+                        "tipo": "warning"
+                    })
+                    raccomandazioni.append(f"La frequenza del corso '{clean_titolo}' è auspicabile sebbene non formalmente bloccante.")
+                else:
+                    has_blocking = True
+                    checks.append({
+                        "categoria": "Precedenti Formativi",
+                        "regola": p_clean,
+                        "riscontro": f"Corso propedeutico obbligatorio '{clean_titolo}' NON presente nello storico corsi del militare",
+                        "esito": "BLOCCANTE",
+                        "tipo": "danger"
+                    })
+                    raccomandazioni.append(f"Il militare deve prima conseguire il corso propedeutico obbligatorio: '{clean_titolo}'.")
 
-    # 4. Verifica Note Caratteristiche (regolarità generale del fascicolo)
-    if note_militare:
-        ultima_nota = note_militare[0]
-        stato_nota = ultima_nota.get("stato_scadenza", "REGOLARE")
-        if stato_nota == "SCADUTA":
-            has_warning = True
-            checks.append({
-                "categoria": "Documenti di Valutazione",
-                "regola": "Documento caratteristico in corso di validità (≤ 365 gg)",
-                "riscontro": f"Ultima nota caratteristica del {ultima_nota.get('periodo_al')} risultante SCADUTA",
-                "esito": "AVVISO",
-                "tipo": "warning"
-            })
-            raccomandazioni.append("Si raccomanda l'aggiornamento della scheda valutativa prima della missione/corso.")
+    # 5. CONOSCENZA LINGUA
+    lingua_req = (c.get("conoscenza_lingua") or "").strip()
+    if not lingua_req and (c.get("prerequisiti") or ""):
+        lingua_m = re.search(r"(?:NATO\s+(?:JFLT|SLP)[^\n,;\.]*|Lingua\s+inglese[^\n,;\.]*|Inglese\s+livello[^\n,;\.]*|Conoscenza\s+Lingua[^\n,;\.]*)", c.get("prerequisiti"), re.IGNORECASE)
+        if lingua_m:
+            lingua_req = lingua_m.group(0).strip()
+
+    lingua_posseduta = (p.get("lingua_inglese") or "NATO JFLT 8").strip()
+
+    if not lingua_req or lingua_req.lower() in ("standard", "nessuna", "nessun requisito", "-"):
+        checks.append({
+            "categoria": "Conoscenza Lingua",
+            "regola": "Standard istituzionale",
+            "riscontro": f"Profilo linguistico ordinario (Registrato: {lingua_posseduta})",
+            "esito": "SODDISFATTO",
+            "tipo": "success"
+        })
+    else:
+        needs_8 = "8" in lingua_req or "jflt 8" in lingua_req.lower() or "slp 8" in lingua_req.lower()
+        has_8 = "8" in lingua_posseduta or "jflt 8" in lingua_posseduta.lower() or "slp 8" in lingua_posseduta.lower() or any(k in lingua_posseduta.lower() for k in ("b2", "c1", "c2"))
+        if needs_8:
+            if has_8:
+                checks.append({
+                    "categoria": "Conoscenza Lingua",
+                    "regola": lingua_req,
+                    "riscontro": f"Livello registrato: '{lingua_posseduta}' (Conforme allo standard richiesto)",
+                    "esito": "SODDISFATTO",
+                    "tipo": "success"
+                })
+            else:
+                has_blocking = True
+                checks.append({
+                    "categoria": "Conoscenza Lingua",
+                    "regola": lingua_req,
+                    "riscontro": f"Livello registrato: '{lingua_posseduta}' INSUFFICIENTE per il livello prescritto ({lingua_req})",
+                    "esito": "BLOCCANTE",
+                    "tipo": "danger"
+                })
+                raccomandazioni.append(f"È necessario accertare o conseguire l'attestazione linguistica prescritta: {lingua_req}.")
         else:
             checks.append({
-                "categoria": "Documenti di Valutazione",
-                "regola": "Regolarità note caratteristiche",
-                "riscontro": f"Nota valida fino al {ultima_nota.get('data_prossima_scadenza')} (Giudizio: {ultima_nota.get('giudizio_finale') or 'Favorevole'})",
+                "categoria": "Conoscenza Lingua",
+                "regola": lingua_req,
+                "riscontro": f"Profilo linguistico registrato: {lingua_posseduta}",
                 "esito": "SODDISFATTO",
                 "tipo": "success"
             })
-    else:
-        checks.append({
-            "categoria": "Documenti di Valutazione",
-            "regola": "Note caratteristiche",
-            "riscontro": "Nessuna nota caratteristica registrata nel fascicolo (personale neo-assegnato o in attesa di prima valutazione)",
-            "esito": "INFO",
-            "tipo": "info"
-        })
 
+    # 6. PATENTI DI GUIDA (Civili o Militari)
+    altri_req = (c.get("altri_requisiti") or "").strip()
+    prereq_str = (c.get("prerequisiti") or "").strip()
+    req_combined = f"{altri_req} {prereq_str}".lower()
+    patenti_militare = p.get("patenti", [])
+
+    if any(k in req_combined for k in ("patente", "mod. 2", "mod. 3", "mod. 4", "mod 2", "mod 3", "cqc")):
+        patente_trovata = None
+        req_pat_label = "Patente di Guida"
+        if "mod. 2" in req_combined or "mod 2" in req_combined:
+            req_pat_label = "Patente Militare Mod. 2"
+            for pat in patenti_militare:
+                cat = (pat.get("categoria") or "").lower()
+                if "mod. 2" in cat or "mod 2" in cat:
+                    patente_trovata = pat
+                    break
+        elif "mod. 3" in req_combined or "mod 3" in req_combined:
+            req_pat_label = "Patente Militare Mod. 3"
+            for pat in patenti_militare:
+                cat = (pat.get("categoria") or "").lower()
+                if "mod. 3" in cat or "mod 3" in cat:
+                    patente_trovata = pat
+                    break
+        elif "mod. 4" in req_combined or "mod 4" in req_combined:
+            req_pat_label = "Patente Militare Mod. 4"
+            for pat in patenti_militare:
+                cat = (pat.get("categoria") or "").lower()
+                if "mod. 4" in cat or "mod 4" in cat:
+                    patente_trovata = pat
+                    break
+        elif "patente b" in req_combined:
+            req_pat_label = "Patente cat. B"
+            for pat in patenti_militare:
+                if "b" in (pat.get("categoria") or "").lower():
+                    patente_trovata = pat
+                    break
+
+        if patente_trovata:
+            stato_scad = patente_trovata.get("stato_scadenza", "REGOLARE")
+            scad_str = patente_trovata.get("data_scadenza", "")
+            if stato_scad == "SCADUTA":
+                has_blocking = True
+                checks.append({
+                    "categoria": "Patente di Guida",
+                    "regola": req_pat_label,
+                    "riscontro": f"Patente {patente_trovata.get('categoria')} registrata ma SCADUTA il {scad_str}",
+                    "esito": "BLOCCANTE",
+                    "tipo": "danger"
+                })
+                raccomandazioni.append(f"È necessario rinnovare la {patente_trovata.get('categoria')} prima dell'invio al corso.")
+            elif stato_scad in ("URGENTE_30GG", "IN_SCADENZA_60GG"):
+                has_warning = True
+                checks.append({
+                    "categoria": "Patente di Guida",
+                    "regola": req_pat_label,
+                    "riscontro": f"Patente {patente_trovata.get('categoria')} attiva ma in scadenza a breve ({scad_str})",
+                    "esito": "IN_SCADENZA",
+                    "tipo": "warning"
+                })
+                raccomandazioni.append("La patente richiesta è in scadenza a breve. Disporre per tempo il rinnovo.")
+            else:
+                checks.append({
+                    "categoria": "Patente di Guida",
+                    "regola": req_pat_label,
+                    "riscontro": f"Patente {patente_trovata.get('categoria')} valida e attiva fino al {scad_str}",
+                    "esito": "SODDISFATTO",
+                    "tipo": "success"
+                })
+        else:
+            has_blocking = True
+            checks.append({
+                "categoria": "Patente di Guida",
+                "regola": req_pat_label,
+                "riscontro": f"Abilitazione alla guida '{req_pat_label}' NON presente nel fascicolo matricolare",
+                "esito": "BLOCCANTE",
+                "tipo": "danger"
+            })
+            raccomandazioni.append(f"Il corso prescrive obbligatoriamente il possesso di: {req_pat_label}.")
+
+    # 7. PRECEDENTI OPERATIVI (ESPERIENZA / IMPIEGO)
+    op_req = (c.get("precedenti_operativi") or "").strip()
+    if not op_req and (c.get("prerequisiti") or ""):
+        op_m = re.search(r"((?:\d+\s*mesi|\d+\s*anni)[^\n,;\.]*(?:impiego|esperienza|servizio)[^\n,;\.]*)", c.get("prerequisiti"), re.IGNORECASE)
+        if op_m:
+            op_req = op_m.group(0).strip()
+
+    if op_req and not op_req.lower().startswith("nessun"):
+        has_warning = True
+        checks.append({
+            "categoria": "Precedenti Operativi",
+            "regola": op_req,
+            "riscontro": f"Requisito di impiego operativo da attestare d'ufficio: '{op_req}'. Verificare fascicolo matricolare.",
+            "esito": "DA_VERIFICARE",
+            "tipo": "warning"
+        })
+        raccomandazioni.append(f"Accertare il requisito operativo con attestazione del Comando: '{op_req}'.")
+
+    # 8. SELEZIONI & IDONEITÀ SPECIALI
+    sel_req = (c.get("selezioni") or "").strip()
+    if not sel_req and (c.get("prerequisiti") or ""):
+        sel_m = re.search(r"(?:Idoneit[àa][^\n,;\.]*|Prove\s+selettive[^\n,;\.]*|Selezioni[^\n,;\.]*|Test\s+d[’\']ingresso[^\n,;\.]*|Protocollo[^\n,;\.]*)", c.get("prerequisiti"), re.IGNORECASE)
+        if sel_m:
+            sel_req = sel_m.group(0).strip()
+
+    if sel_req and not any(k in sel_req.lower() for k in ("nessun", "-")):
+        has_warning = True
+        checks.append({
+            "categoria": "Selezioni & Idoneità",
+            "regola": sel_req,
+            "riscontro": f"Prove selettive / accertamenti sanitari previsti: '{sel_req}'. Richiesto verbale idoneità d'ufficio.",
+            "esito": "DA_VERIFICARE",
+            "tipo": "warning"
+        })
+        raccomandazioni.append(f"Verificare superamento prove selettive o attestazione sanitaria prescritta ({sel_req}).")
     # Calcolo Esito Globale
     if has_blocking:
         esito_globale = "NON_IDONEO"
@@ -832,15 +994,24 @@ def valuta_candidatura_corso(personale_id, corso_id):
             "reparto_ufficio": p.get("reparto_ufficio"),
             "incarico": p.get("incarico"),
             "posto_tabellare": p.get("posto_tabellare"),
-            "stato_servizio": p.get("stato_servizio")
+            "stato_servizio": p.get("stato_servizio"),
+            "livello_nos": p.get("livello_nos"),
+            "lingua_inglese": p.get("lingua_inglese")
         },
         "corso": {
             "id": c["id"],
             "denominazione": c["denominazione"],
             "codice_corso": c.get("codice_corso"),
             "ente_erogatore": c.get("ente_erogatore"),
+            "durata_settimane": c.get("durata_settimane"),
             "durata_ore": c.get("durata_ore"),
             "validita_mesi": c.get("validita_mesi"),
+            "requisiti_sicurezza": c.get("requisiti_sicurezza"),
+            "precedenti_formativi": c.get("precedenti_formativi"),
+            "precedenti_operativi": c.get("precedenti_operativi"),
+            "selezioni": c.get("selezioni"),
+            "conoscenza_lingua": c.get("conoscenza_lingua"),
+            "altri_requisiti": c.get("altri_requisiti"),
             "prerequisiti": c.get("prerequisiti")
         },
         "esito_globale": esito_globale,
@@ -853,19 +1024,37 @@ def valuta_candidatura_corso(personale_id, corso_id):
 
 
 def create_corso(data):
-    """Crea un nuovo corso nel catalogo generale."""
+    """Crea un nuovo corso nel catalogo generale con tutte le voci strutturate."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        sett = data.get("durata_settimane")
+        ore = data.get("durata_ore")
+        if not sett and ore:
+            sett = ore // 36 if ore >= 36 else 1
+        elif sett and not ore:
+            ore = sett * 36
+
         cursor.execute("""
             INSERT INTO corso (
-                codice_corso, denominazione, ente_erogatore, durata_ore, validita_mesi, prerequisiti, fonte_catalogo, descrizione
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                codice_corso, denominazione, ente_erogatore,
+                durata_settimane, durata_ore, validita_mesi,
+                requisiti_sicurezza, precedenti_formativi, precedenti_operativi,
+                selezioni, conoscenza_lingua, altri_requisiti,
+                prerequisiti, fonte_catalogo, descrizione
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data.get("codice_corso"),
             data.get("denominazione"),
             data.get("ente_erogatore"),
-            data.get("durata_ore"),
+            sett,
+            ore,
             data.get("validita_mesi") if data.get("validita_mesi") else None,
+            data.get("requisiti_sicurezza", ""),
+            data.get("precedenti_formativi", ""),
+            data.get("precedenti_operativi", ""),
+            data.get("selezioni", ""),
+            data.get("conoscenza_lingua", ""),
+            data.get("altri_requisiti", ""),
             data.get("prerequisiti", ""),
             data.get("fonte_catalogo", "Manuale"),
             data.get("descrizione", "")
@@ -875,16 +1064,31 @@ def create_corso(data):
 
 
 def update_corso(corso_id, data):
+    """Aggiorna un corso nel catalogo con tutte le voci strutturate."""
     with get_db_connection() as conn:
         cur = conn.execute("SELECT fonte_catalogo FROM corso WHERE id = ?", (corso_id,)).fetchone()
         fonte = data.get("fonte_catalogo") or (cur["fonte_catalogo"] if cur else "Manuale")
+        sett = data.get("durata_settimane")
+        ore = data.get("durata_ore")
+        if not sett and ore:
+            sett = ore // 36 if ore >= 36 else 1
+        elif sett and not ore:
+            ore = sett * 36
+
         conn.execute("""
             UPDATE corso SET
                 codice_corso = ?,
                 denominazione = ?,
                 ente_erogatore = ?,
+                durata_settimane = ?,
                 durata_ore = ?,
                 validita_mesi = ?,
+                requisiti_sicurezza = ?,
+                precedenti_formativi = ?,
+                precedenti_operativi = ?,
+                selezioni = ?,
+                conoscenza_lingua = ?,
+                altri_requisiti = ?,
                 prerequisiti = ?,
                 fonte_catalogo = ?,
                 descrizione = ?
@@ -893,8 +1097,15 @@ def update_corso(corso_id, data):
             data.get("codice_corso"),
             data.get("denominazione"),
             data.get("ente_erogatore"),
-            data.get("durata_ore"),
+            sett,
+            ore,
             data.get("validita_mesi") if data.get("validita_mesi") else None,
+            data.get("requisiti_sicurezza", ""),
+            data.get("precedenti_formativi", ""),
+            data.get("precedenti_operativi", ""),
+            data.get("selezioni", ""),
+            data.get("conoscenza_lingua", ""),
+            data.get("altri_requisiti", ""),
             data.get("prerequisiti", ""),
             fonte,
             data.get("descrizione", ""),
@@ -916,13 +1127,18 @@ def import_corsi_batch(courses_list, fonte_catalogo="Catalogo PDF"):
             if not denominazione:
                 continue
 
+            sett = c.get("durata_settimane")
+            ore = c.get("durata_ore")
+            if not sett and ore:
+                sett = ore // 36 if ore >= 36 else 1
+            elif sett and not ore:
+                ore = sett * 36
+
             if not codice:
-                # Genera codice univoco basato sul titolo
                 words = [w[:3].upper() for w in denominazione.split() if len(w) >= 3][:3]
                 prefix = "-".join(words) if words else "COR"
                 codice = f"PDF-{prefix}-{imported_count + updated_count + 1:03d}"
 
-            # Verifica se il corso esiste già (per codice o per denominazione esatta)
             existing = conn.execute(
                 "SELECT id FROM corso WHERE codice_corso = ? OR LOWER(denominazione) = LOWER(?)",
                 (codice, denominazione)
@@ -934,8 +1150,15 @@ def import_corsi_batch(courses_list, fonte_catalogo="Catalogo PDF"):
                         codice_corso = ?,
                         denominazione = ?,
                         ente_erogatore = COALESCE(?, ente_erogatore),
+                        durata_settimane = COALESCE(?, durata_settimane),
                         durata_ore = COALESCE(?, durata_ore),
                         validita_mesi = COALESCE(?, validita_mesi),
+                        requisiti_sicurezza = COALESCE(?, requisiti_sicurezza),
+                        precedenti_formativi = COALESCE(?, precedenti_formativi),
+                        precedenti_operativi = COALESCE(?, precedenti_operativi),
+                        selezioni = COALESCE(?, selezioni),
+                        conoscenza_lingua = COALESCE(?, conoscenza_lingua),
+                        altri_requisiti = COALESCE(?, altri_requisiti),
                         prerequisiti = COALESCE(?, prerequisiti),
                         fonte_catalogo = ?,
                         descrizione = COALESCE(?, descrizione)
@@ -944,8 +1167,15 @@ def import_corsi_batch(courses_list, fonte_catalogo="Catalogo PDF"):
                     codice,
                     denominazione,
                     c.get("ente_erogatore"),
-                    c.get("durata_ore"),
+                    sett,
+                    ore,
                     c.get("validita_mesi"),
+                    c.get("requisiti_sicurezza"),
+                    c.get("precedenti_formativi"),
+                    c.get("precedenti_operativi"),
+                    c.get("selezioni"),
+                    c.get("conoscenza_lingua"),
+                    c.get("altri_requisiti"),
                     c.get("prerequisiti"),
                     fonte_catalogo,
                     c.get("descrizione"),
@@ -955,14 +1185,25 @@ def import_corsi_batch(courses_list, fonte_catalogo="Catalogo PDF"):
             else:
                 conn.execute("""
                     INSERT INTO corso (
-                        codice_corso, denominazione, ente_erogatore, durata_ore, validita_mesi, prerequisiti, fonte_catalogo, descrizione
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        codice_corso, denominazione, ente_erogatore,
+                        durata_settimane, durata_ore, validita_mesi,
+                        requisiti_sicurezza, precedenti_formativi, precedenti_operativi,
+                        selezioni, conoscenza_lingua, altri_requisiti,
+                        prerequisiti, fonte_catalogo, descrizione
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     codice,
                     denominazione,
-                    c.get("ente_erogatore") or "Ente Istituzionale",
-                    c.get("durata_ore"),
+                    c.get("ente_erogatore") or "Centro Interforze di Formazione Intelligence/G.E. (CIFI/GE)",
+                    sett,
+                    ore,
                     c.get("validita_mesi"),
+                    c.get("requisiti_sicurezza"),
+                    c.get("precedenti_formativi"),
+                    c.get("precedenti_operativi"),
+                    c.get("selezioni"),
+                    c.get("conoscenza_lingua"),
+                    c.get("altri_requisiti"),
                     c.get("prerequisiti") or "Nessun prerequisito specifico indicato",
                     fonte_catalogo,
                     c.get("descrizione") or ""
@@ -971,6 +1212,122 @@ def import_corsi_batch(courses_list, fonte_catalogo="Catalogo PDF"):
 
         conn.commit()
     return {"imported": imported_count, "updated": updated_count, "total": imported_count + updated_count}
+
+
+def reset_and_seed_cifige_courses():
+    """
+    Cancella tutti i corsi precedentemente inseriti e relative partecipazioni collegate,
+    e inserisce i 38 corsi ufficiali CIFIGE con tutte le voci strutturate.
+    Configura inoltre livelli NOS, lingue e partecipazioni formative per il personale di test.
+    """
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM partecipazione_corso;")
+        conn.execute("DELETE FROM corso;")
+
+        for c in CIFIGE_COURSES:
+            conn.execute("""
+                INSERT INTO corso (
+                    codice_corso, denominazione, ente_erogatore,
+                    durata_settimane, durata_ore, validita_mesi,
+                    requisiti_sicurezza, precedenti_formativi, precedenti_operativi,
+                    selezioni, conoscenza_lingua, altri_requisiti,
+                    prerequisiti, fonte_catalogo, descrizione
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                c["codice_corso"],
+                c["denominazione"],
+                c["ente_erogatore"],
+                c.get("durata_settimane"),
+                c.get("durata_ore"),
+                c.get("validita_mesi"),
+                c.get("requisiti_sicurezza"),
+                c.get("precedenti_formativi"),
+                c.get("precedenti_operativi"),
+                c.get("selezioni"),
+                c.get("conoscenza_lingua"),
+                c.get("altri_requisiti"),
+                c.get("prerequisiti"),
+                c.get("fonte_catalogo", "CATALOGO_CORSI_CIFIGE_ESTRATTO.pdf"),
+                c.get("descrizione", "")
+            ))
+
+        # Configura livello NOS e lingua per i militari censiti
+        personale_rows = conn.execute("SELECT id, matricola, grado_qualifica, cognome FROM personale").fetchall()
+        for p in personale_rows:
+            p_id = p["id"]
+            cognome = p["cognome"].lower()
+            if "rossi" in cognome:
+                nos = "Segretissimo / NATO Cosmic Top Secret"
+                lingua = "NATO JFLT 8 (2/2/2/2)"
+            elif "ferrari" in cognome:
+                nos = "Segreto / NATO Secret"
+                lingua = "NATO JFLT 8 (2/2/2/2)"
+            elif "bianchi" in cognome:
+                nos = "Segreto / NATO Secret"
+                lingua = "NATO JFLT 8 (2/2/2/2)"
+            elif "verdi" in cognome:
+                nos = "Riservato"
+                lingua = "Livello B1"
+            elif "esposito" in cognome:
+                nos = "Riservato"
+                lingua = "Base / Elementare"
+            else:
+                nos = "Riservato"
+                lingua = "NATO JFLT 8"
+
+            conn.execute("UPDATE personale SET livello_nos = ?, lingua_inglese = ? WHERE id = ?", (nos, lingua, p_id))
+
+        # Inserimento partecipazioni di test collegate ai nuovi corsi CIFIGE
+        corso_map = {}
+        for row in conn.execute("SELECT id, codice_corso, denominazione FROM corso").fetchall():
+            corso_map[row["codice_corso"]] = row["id"]
+
+        m_rossi = conn.execute("SELECT id FROM personale WHERE LOWER(cognome) = 'rossi'").fetchone()
+        m_ferrari = conn.execute("SELECT id FROM personale WHERE LOWER(cognome) = 'ferrari'").fetchone()
+        m_bianchi = conn.execute("SELECT id FROM personale WHERE LOWER(cognome) = 'bianchi'").fetchone()
+        m_verdi = conn.execute("SELECT id FROM personale WHERE LOWER(cognome) = 'verdi'").fetchone()
+        m_esposito = conn.execute("SELECT id FROM personale WHERE LOWER(cognome) = 'esposito'").fetchone()
+
+        if m_rossi and "CIFIGE-01" in corso_map and "CIFIGE-05" in corso_map:
+            conn.execute("""
+                INSERT INTO partecipazione_corso (personale_id, corso_id, data_inizio, data_fine, esito, numero_attestato, note)
+                VALUES (?, ?, '2024-02-05', '2024-02-16', 'Superato', 'ATT-CIFIGE-01-2024', 'Corso Intelligence Interforze superato con profitto.')
+            """, (m_rossi["id"], corso_map["CIFIGE-01"]))
+            conn.execute("""
+                INSERT INTO partecipazione_corso (personale_id, corso_id, data_inizio, data_fine, esito, numero_attestato, note)
+                VALUES (?, ?, '2024-10-07', '2024-10-18', 'Superato', 'ATT-CIFIGE-05-2024', 'Corso TECHINT 1° Livello completato.')
+            """, (m_rossi["id"], corso_map["CIFIGE-05"]))
+
+        if m_ferrari and "CIFIGE-01" in corso_map and "CIFIGE-02" in corso_map:
+            conn.execute("""
+                INSERT INTO partecipazione_corso (personale_id, corso_id, data_inizio, data_fine, esito, numero_attestato, note)
+                VALUES (?, ?, '2024-03-04', '2024-03-15', 'Superato', 'ATT-CIFIGE-01-2024-F', 'Propedeuticità comparto conseguita.')
+            """, (m_ferrari["id"], corso_map["CIFIGE-01"]))
+            conn.execute("""
+                INSERT INTO partecipazione_corso (personale_id, corso_id, data_inizio, data_fine, esito, numero_attestato, note)
+                VALUES (?, ?, '2024-11-11', '2024-11-22', 'Superato', 'ATT-CIFIGE-02-2024-F', 'Corso J2 Staff superato con lode.')
+            """, (m_ferrari["id"], corso_map["CIFIGE-02"]))
+
+        if m_bianchi and "CIFIGE-25" in corso_map:
+            conn.execute("""
+                INSERT INTO partecipazione_corso (personale_id, corso_id, data_inizio, data_fine, esito, numero_attestato, note)
+                VALUES (?, ?, '2024-05-06', '2024-05-17', 'Superato', 'ATT-CIFIGE-25-2024', 'Acquisizione Forense digitale.')
+            """, (m_bianchi["id"], corso_map["CIFIGE-25"]))
+
+        if m_verdi and "CIFIGE-24" in corso_map:
+            conn.execute("""
+                INSERT INTO partecipazione_corso (personale_id, corso_id, data_inizio, data_fine, esito, numero_attestato, note)
+                VALUES (?, ?, '2025-01-13', '2025-01-17', 'Superato', 'ATT-CIFIGE-24-2025', 'Corso propedeutico CNO.')
+            """, (m_verdi["id"], corso_map["CIFIGE-24"]))
+
+        if m_esposito and "CIFIGE-01" in corso_map:
+            conn.execute("""
+                INSERT INTO partecipazione_corso (personale_id, corso_id, data_inizio, data_fine, esito, numero_attestato, note)
+                VALUES (?, ?, '2024-04-08', '2024-04-19', 'Superato', 'ATT-CIFIGE-01-2024-E', 'Abilitazione di base comparto.')
+            """, (m_esposito["id"], corso_map["CIFIGE-01"]))
+
+        conn.commit()
+        return len(CIFIGE_COURSES)
 
 
 def delete_corso(corso_id):

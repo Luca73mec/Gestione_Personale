@@ -347,6 +347,8 @@ async function loadDettaglioPersonale(id) {
     document.getElementById('det-stato-badge').innerHTML = `
       <span class="badge ${p.stato_servizio === 'In Servizio' ? 'badge-regolare' : 'badge-neutral'}">${p.stato_servizio}</span>
       <span class="badge badge-info">CF: ${p.codice_fiscale}</span>
+      <span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700;">🛡️ NOS: ${p.livello_nos || 'Riservato'}</span>
+      <span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">🗣️ Lingua: ${p.lingua_inglese || 'Standard'}</span>
     `;
 
     // 1. Tab Anagrafica
@@ -361,6 +363,10 @@ async function loadDettaglioPersonale(id) {
     document.getElementById('anag-email-ist').innerText = p.email_istituzionale || '-';
     document.getElementById('anag-email-pers').innerText = p.email_personale || '-';
     document.getElementById('anag-telefono').innerText = p.telefono || '-';
+    const nosEl = document.getElementById('anag-nos');
+    if (nosEl) nosEl.innerText = p.livello_nos || 'Riservato';
+    const lingEl = document.getElementById('anag-lingua');
+    if (lingEl) lingEl.innerText = p.lingua_inglese || 'Standard (NATO JFLT 8)';
     document.getElementById('anag-note').innerText = p.note_generali || 'Nessuna annotazione particolare.';
 
     // 2. Tab Note Caratteristiche
@@ -610,18 +616,94 @@ async function loadCorsiCatalogo() {
       return;
     }
 
-    tbody.innerHTML = res.data.map(c => `
+    tbody.innerHTML = res.data.map(c => {
+      const durText = (c.durata_settimane ? `<strong>${c.durata_settimane} sett.</strong> ` : '') + (c.durata_ore ? `<span style="color:var(--slate-600);">(${c.durata_ore} h)</span>` : '-');
+      
+      // Costruzione blocchi requisiti con etichetta posta immediatamente sopra ciascun tag
+      const reqBlocks = [];
+
+      // 1. Requisito Sicurezza (NOS)
+      const sicVal = c.requisiti_sicurezza ? c.requisiti_sicurezza : 'Nessuno prescritto';
+      const sicBg = c.requisiti_sicurezza ? '#fee2e2' : '#f1f5f9';
+      const sicColor = c.requisiti_sicurezza ? '#991b1b' : '#64748b';
+      reqBlocks.push(`
+        <div style="margin-bottom: 7px; line-height: 1.2;">
+          <span style="font-size: 10px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px;">🛡️ Requisito Sicurezza (NOS)</span>
+          <span class="badge" style="background:${sicBg}; color:${sicColor}; font-size: 11px; font-weight: 600; display: inline-block;">${sicVal}</span>
+        </div>
+      `);
+
+      // 2. Precedenti Formativi (Propedeuticità)
+      const formVal = c.precedenti_formativi ? c.precedenti_formativi : 'Nessuno (Accesso Diretto)';
+      const formBg = c.precedenti_formativi && !c.precedenti_formativi.toLowerCase().startsWith('nessun') ? '#dbeafe' : '#f1f5f9';
+      const formColor = c.precedenti_formativi && !c.precedenti_formativi.toLowerCase().startsWith('nessun') ? '#1e40af' : '#64748b';
+      reqBlocks.push(`
+        <div style="margin-bottom: 7px; line-height: 1.2;">
+          <span style="font-size: 10px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px;">🎓 Precedenti Formativi</span>
+          <span class="badge" style="background:${formBg}; color:${formColor}; font-size: 11px; font-weight: 600; display: inline-block;">${formVal}</span>
+        </div>
+      `);
+
+      // 3. Conoscenza Lingua
+      const lingVal = c.conoscenza_lingua ? c.conoscenza_lingua : 'Standard istituzionale';
+      const lingBg = c.conoscenza_lingua && !['standard', 'nessuna'].includes(c.conoscenza_lingua.toLowerCase()) ? '#fef3c7' : '#f1f5f9';
+      const lingColor = c.conoscenza_lingua && !['standard', 'nessuna'].includes(c.conoscenza_lingua.toLowerCase()) ? '#92400e' : '#64748b';
+      reqBlocks.push(`
+        <div style="margin-bottom: 7px; line-height: 1.2;">
+          <span style="font-size: 10px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px;">🗣️ Conoscenza Lingua</span>
+          <span class="badge" style="background:${lingBg}; color:${lingColor}; font-size: 11px; font-weight: 600; display: inline-block;">${lingVal}</span>
+        </div>
+      `);
+
+      // 4. Altri Requisiti / Patenti
+      if (c.altri_requisiti) {
+        reqBlocks.push(`
+          <div style="margin-bottom: 7px; line-height: 1.2;">
+            <span style="font-size: 10px; font-weight: 700; color: #6b21a8; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px;">🪪 Altri Requisiti / Patenti</span>
+            <span class="badge" style="background:#f3e8ff; color:#6b21a8; font-size: 11px; font-weight: 600; display: inline-block;">${c.altri_requisiti}</span>
+          </div>
+        `);
+      }
+
+      // 5. Precedenti Operativi (se indicati)
+      if (c.precedenti_operativi) {
+        reqBlocks.push(`
+          <div style="margin-bottom: 7px; line-height: 1.2;">
+            <span style="font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px;">⏱️ Precedenti Operativi</span>
+            <span class="badge" style="background:#f1f5f9; color:#475569; font-size: 11px; font-weight: 600; display: inline-block;">${c.precedenti_operativi}</span>
+          </div>
+        `);
+      }
+
+      // 6. Selezioni Speciali (se indicate)
+      if (c.selezioni) {
+        reqBlocks.push(`
+          <div style="margin-bottom: 7px; line-height: 1.2;">
+            <span style="font-size: 10px; font-weight: 700; color: #9f1239; text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 2px;">🩺 Selezioni Speciali</span>
+            <span class="badge" style="background:#fef2f2; color:#b91c1c; font-size: 11px; font-weight: 600; display: inline-block;">${c.selezioni}</span>
+          </div>
+        `);
+      }
+
+      const dataInserimentoStr = formatDateTime(c.created_at);
+
+      return `
       <tr>
-        <td><code>${c.codice_corso}</code></td>
-        <td><strong>${c.denominazione}</strong></td>
+        <td><code style="font-size:12px; font-weight:700; color:var(--primary);">${c.codice_corso}</code></td>
+        <td>
+          <strong style="font-size: 14px; color: var(--slate-900);">${c.denominazione}</strong>
+          <div style="font-size: 11.5px; color: var(--slate-500); margin-top: 4px;">
+            🕒 Inserito: ${dataInserimentoStr}
+          </div>
+        </td>
         <td>${c.ente_erogatore}</td>
         <td>
-          ${c.durata_ore ? c.durata_ore + ' ore' : '-'}
+          ${durText}
           ${c.validita_mesi ? '<br><small style="color: var(--slate-500);">' + c.validita_mesi + ' mesi rinnovo</small>' : '<br><small style="color: var(--slate-500);">Permanente</small>'}
         </td>
-        <td>
-          <div style="font-size: 12.5px; color: var(--slate-700);">
-            ${c.prerequisiti ? `<span class="badge badge-warning" style="margin-right: 4px; font-size: 11px;">Requisiti:</span>${c.prerequisiti}` : '<span style="color: var(--slate-400); font-style: italic;">Nessun prerequisito specifico</span>'}
+        <td style="padding: 12px 10px;">
+          <div style="font-size: 12px;">
+            ${reqBlocks.join('')}
           </div>
         </td>
         <td>
@@ -629,6 +711,9 @@ async function loadCorsiCatalogo() {
           ${c.fonte_catalogo && c.fonte_catalogo !== 'Manuale' ? `<br><small style="color: var(--slate-500); font-size: 11px;" title="Importato da PDF">📄 ${c.fonte_catalogo}</small>` : ''}
         </td>
         <td style="text-align: center; white-space: nowrap;">
+          <button class="btn btn-outline-primary btn-sm" onclick="visualizzaSchedaCorso(${c.id})" title="Visualizza Scheda Monografica del Corso" style="margin-right: 4px; font-weight: 600;">
+            📋 Scheda Corso
+          </button>
           <button class="btn btn-secondary btn-sm" onclick="apriModaleModificaCorso(${c.id})" title="Modifica corso" style="margin-right: 4px;">
             ✏️ Modifica
           </button>
@@ -637,10 +722,89 @@ async function loadCorsiCatalogo() {
           </button>
         </td>
       </tr>
-    `).join('');
+      `;
+    }).join('');
   } catch (err) {
     console.error("Errore caricamento catalogo corsi:", err);
   }
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return 'Data non disp.';
+  try {
+    const d = new Date(dateStr.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ore ${hours}:${minutes}`;
+  } catch (e) {
+    return dateStr;
+  }
+}
+
+function visualizzaSchedaCorso(id) {
+  const c = (AppState.corsiCache || []).find(x => x.id === id);
+  if (!c) return;
+
+  document.getElementById('sc-codice').textContent = c.codice_corso || '-';
+  document.getElementById('sc-titolo').textContent = c.denominazione || '-';
+  document.getElementById('sc-data-inserimento').textContent = `Inserito il ${formatDateTime(c.created_at)}`;
+  document.getElementById('sc-fonte').textContent = c.fonte_catalogo || 'Manuale';
+  document.getElementById('sc-ente').textContent = c.ente_erogatore || '-';
+
+  const durParts = [];
+  if (c.durata_settimane) durParts.push(`${c.durata_settimane} Settimane`);
+  if (c.durata_ore) durParts.push(`${c.durata_ore} Ore complessive`);
+  document.getElementById('sc-durata').textContent = durParts.length > 0 ? durParts.join(' / ') : 'Non specificata';
+
+  document.getElementById('sc-validita').textContent = c.validita_mesi ? `${c.validita_mesi} mesi (Rinnovo periodico)` : 'Permanente (Senza scadenza)';
+  document.getElementById('sc-partecipanti').textContent = `${c.num_partecipanti || 0} militari registrati`;
+
+  document.getElementById('sc-sicurezza').textContent = c.requisiti_sicurezza || 'Nessun vincolo formale';
+  document.getElementById('sc-formativi').textContent = c.precedenti_formativi || 'Nessuno (Accesso diretto)';
+  document.getElementById('sc-lingua').textContent = c.conoscenza_lingua || 'Standard istituzionale';
+  document.getElementById('sc-altri').textContent = c.altri_requisiti || 'Nessun requisito supplementare';
+
+  const boxOp = document.getElementById('sc-box-op');
+  if (boxOp) {
+    if (c.precedenti_operativi) {
+      boxOp.style.display = 'block';
+      document.getElementById('sc-operativi').textContent = c.precedenti_operativi;
+    } else {
+      boxOp.style.display = 'none';
+    }
+  }
+
+  const boxSel = document.getElementById('sc-box-sel');
+  if (boxSel) {
+    if (c.selezioni) {
+      boxSel.style.display = 'block';
+      document.getElementById('sc-selezioni').textContent = c.selezioni;
+    } else {
+      boxSel.style.display = 'none';
+    }
+  }
+
+  document.getElementById('sc-descrizione').textContent = c.descrizione || 'Nessuna descrizione o scopo didattico specificato a catalogo.';
+
+  const rawPrereqBox = document.getElementById('sc-box-prereq-raw');
+  if (rawPrereqBox) {
+    if (c.prerequisiti) {
+      rawPrereqBox.style.display = 'block';
+      document.getElementById('sc-prerequisiti-raw').textContent = c.prerequisiti;
+    } else {
+      rawPrereqBox.style.display = 'none';
+    }
+  }
+
+  openModal('modal-scheda-corso');
+}
+
+function stampaSchedaCorso() {
+  window.print();
 }
 
 async function apriModaleModificaCorso(id) {
@@ -660,8 +824,15 @@ async function apriModaleModificaCorso(id) {
   document.getElementById('edit-cat-codice').value = c.codice_corso || '';
   document.getElementById('edit-cat-nome').value = c.denominazione || '';
   document.getElementById('edit-cat-ente').value = c.ente_erogatore || '';
+  document.getElementById('edit-cat-settimane').value = c.durata_settimane || '';
   document.getElementById('edit-cat-ore').value = c.durata_ore || '';
   document.getElementById('edit-cat-validita').value = c.validita_mesi || '';
+  document.getElementById('edit-cat-sicurezza').value = c.requisiti_sicurezza || '';
+  document.getElementById('edit-cat-formativi').value = c.precedenti_formativi || '';
+  document.getElementById('edit-cat-operativi').value = c.precedenti_operativi || '';
+  document.getElementById('edit-cat-selezioni').value = c.selezioni || '';
+  document.getElementById('edit-cat-lingua').value = c.conoscenza_lingua || '';
+  document.getElementById('edit-cat-altri').value = c.altri_requisiti || '';
   document.getElementById('edit-cat-prerequisiti').value = c.prerequisiti || '';
   document.getElementById('edit-cat-desc').value = c.descrizione || '';
 
@@ -885,6 +1056,11 @@ async function onPlanMilitareChange() {
     document.getElementById('plan-m-incarico').textContent = p.incarico || '-';
     document.getElementById('plan-m-posto').textContent = p.posto_tabellare || '-';
 
+    const nosEl = document.getElementById('plan-m-nos');
+    if (nosEl) nosEl.textContent = p.livello_nos || 'Riservato';
+    const linguaEl = document.getElementById('plan-m-lingua');
+    if (linguaEl) linguaEl.textContent = p.lingua_inglese || 'NATO JFLT 8';
+
     const statoBadge = document.getElementById('plan-m-stato-badge');
     if (p.stato_servizio === 'In Servizio') {
       statoBadge.className = 'badge badge-success';
@@ -948,10 +1124,57 @@ function renderPlanCorsoCard(c) {
 
   document.getElementById('plan-c-codice').textContent = c.codice_corso || 'COR-GEN';
   document.getElementById('plan-c-nome').textContent = c.denominazione;
-  document.getElementById('plan-c-ore-badge').textContent = c.durata_ore ? `${c.durata_ore} Ore` : 'N/D';
+
+  let durText = '';
+  if (c.durata_settimane) durText += `${c.durata_settimane} Sett. `;
+  if (c.durata_ore) durText += `(${c.durata_ore} Ore)`;
+  if (!durText) durText = 'N/D';
+  document.getElementById('plan-c-ore-badge').textContent = durText;
+
   document.getElementById('plan-c-ente').textContent = c.ente_erogatore || '-';
   document.getElementById('plan-c-validita').textContent = c.validita_mesi ? `${c.validita_mesi} mesi` : 'Permanente / Senza Scadenza';
-  document.getElementById('plan-c-prereq-text').textContent = c.prerequisiti || 'Nessun prerequisito specifico indicato a catalogo.';
+
+  const elSic = document.getElementById('plan-c-sicurezza');
+  if (elSic) elSic.textContent = c.requisiti_sicurezza || 'Standard (Riservato)';
+
+  const elForm = document.getElementById('plan-c-formativi');
+  if (elForm) elForm.textContent = c.precedenti_formativi || 'Nessuno prescritto';
+
+  const elLing = document.getElementById('plan-c-lingua');
+  if (elLing) elLing.textContent = c.conoscenza_lingua || 'Standard';
+
+  const boxOp = document.getElementById('plan-c-box-op');
+  const elOp = document.getElementById('plan-c-operativi');
+  if (boxOp && elOp) {
+    if (c.precedenti_operativi) {
+      boxOp.style.display = 'block';
+      elOp.textContent = c.precedenti_operativi;
+    } else {
+      boxOp.style.display = 'none';
+    }
+  }
+
+  const boxSel = document.getElementById('plan-c-box-sel');
+  const elSel = document.getElementById('plan-c-selezioni');
+  if (boxSel && elSel) {
+    if (c.selezioni) {
+      boxSel.style.display = 'block';
+      elSel.textContent = c.selezioni;
+    } else {
+      boxSel.style.display = 'none';
+    }
+  }
+
+  const boxAltri = document.getElementById('plan-c-box-altri');
+  const elAltri = document.getElementById('plan-c-altri');
+  if (boxAltri && elAltri) {
+    if (c.altri_requisiti) {
+      boxAltri.style.display = 'block';
+      elAltri.textContent = c.altri_requisiti;
+    } else {
+      boxAltri.style.display = 'none';
+    }
+  }
 
   card.style.display = 'block';
 }
@@ -1123,25 +1346,27 @@ function setupPersonaleForm() {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {
-      matricola: document.getElementById('p-matricola').value,
-      codice_fiscale: document.getElementById('p-cf').value,
-      cognome: document.getElementById('p-cognome').value,
-      nome: document.getElementById('p-nome').value,
+      matricola: document.getElementById('p-matricola').value.trim(),
+      codice_fiscale: document.getElementById('p-cf').value.trim(),
+      cognome: document.getElementById('p-cognome').value.trim(),
+      nome: document.getElementById('p-nome').value.trim(),
       sesso: document.getElementById('p-sesso').value,
       data_nascita: document.getElementById('p-nascita').value,
-      luogo_nascita: document.getElementById('p-luogo-nascita').value,
-      provincia_nascita: document.getElementById('p-provincia-nascita').value,
-      grado_qualifica: document.getElementById('p-grado').value,
+      luogo_nascita: document.getElementById('p-luogo-nascita').value.trim(),
+      provincia_nascita: document.getElementById('p-provincia-nascita').value.trim(),
+      grado_qualifica: document.getElementById('p-grado').value.trim(),
       reparto_ufficio: document.getElementById('p-reparto').value,
-      incarico: document.getElementById('p-incarico').value,
-      posto_tabellare: document.getElementById('p-posto-tabellare').value,
+      incarico: document.getElementById('p-incarico').value.trim(),
+      posto_tabellare: document.getElementById('p-posto-tabellare').value.trim(),
       stato_servizio: document.getElementById('p-stato').value,
+      livello_nos: document.getElementById('p-nos') ? document.getElementById('p-nos').value : 'Riservato',
+      lingua_inglese: document.getElementById('p-lingua') ? document.getElementById('p-lingua').value.trim() : 'NATO JFLT 8',
       data_arruolamento_assunzione: document.getElementById('p-arruolamento').value,
-      email_istituzionale: document.getElementById('p-email-ist').value,
-      email_personale: document.getElementById('p-email-pers').value,
-      telefono: document.getElementById('p-telefono').value,
-      indirizzo_residenza: document.getElementById('p-residenza').value,
-      note_generali: document.getElementById('p-note').value
+      email_istituzionale: document.getElementById('p-email-ist').value.trim(),
+      email_personale: document.getElementById('p-email-pers').value.trim(),
+      telefono: document.getElementById('p-telefono').value.trim(),
+      indirizzo_residenza: document.getElementById('p-residenza').value.trim(),
+      note_generali: document.getElementById('p-note').value.trim()
     };
 
     try {
@@ -1169,6 +1394,12 @@ function openModificaPersonaleModal() {
   document.getElementById('edit-p-incarico').value = p.incarico || '';
   document.getElementById('edit-p-posto-tabellare').value = p.posto_tabellare || '';
   document.getElementById('edit-p-stato').value = p.stato_servizio || 'In Servizio';
+  if (document.getElementById('edit-p-nos')) {
+    document.getElementById('edit-p-nos').value = p.livello_nos || 'Riservato';
+  }
+  if (document.getElementById('edit-p-lingua')) {
+    document.getElementById('edit-p-lingua').value = p.lingua_inglese || '';
+  }
   document.getElementById('edit-p-nascita').value = p.data_nascita || '';
   document.getElementById('edit-p-sesso').value = p.sesso || 'M';
   document.getElementById('edit-p-luogo-nascita').value = p.luogo_nascita || '';
@@ -1188,25 +1419,27 @@ function setupModificaPersonaleForm() {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {
-      matricola: document.getElementById('edit-p-matricola').value,
-      codice_fiscale: document.getElementById('edit-p-cf').value,
-      cognome: document.getElementById('edit-p-cognome').value,
-      nome: document.getElementById('edit-p-nome').value,
+      matricola: document.getElementById('edit-p-matricola').value.trim(),
+      codice_fiscale: document.getElementById('edit-p-cf').value.trim(),
+      cognome: document.getElementById('edit-p-cognome').value.trim(),
+      nome: document.getElementById('edit-p-nome').value.trim(),
       sesso: document.getElementById('edit-p-sesso').value,
       data_nascita: document.getElementById('edit-p-nascita').value,
-      luogo_nascita: document.getElementById('edit-p-luogo-nascita').value,
-      provincia_nascita: document.getElementById('edit-p-provincia-nascita').value,
-      grado_qualifica: document.getElementById('edit-p-grado').value,
+      luogo_nascita: document.getElementById('edit-p-luogo-nascita').value.trim(),
+      provincia_nascita: document.getElementById('edit-p-provincia-nascita').value.trim(),
+      grado_qualifica: document.getElementById('edit-p-grado').value.trim(),
       reparto_ufficio: document.getElementById('edit-p-reparto').value,
-      incarico: document.getElementById('edit-p-incarico').value,
-      posto_tabellare: document.getElementById('edit-p-posto-tabellare').value,
+      incarico: document.getElementById('edit-p-incarico').value.trim(),
+      posto_tabellare: document.getElementById('edit-p-posto-tabellare').value.trim(),
       stato_servizio: document.getElementById('edit-p-stato').value,
+      livello_nos: document.getElementById('edit-p-nos') ? document.getElementById('edit-p-nos').value : 'Riservato',
+      lingua_inglese: document.getElementById('edit-p-lingua') ? document.getElementById('edit-p-lingua').value.trim() : 'NATO JFLT 8',
       data_arruolamento_assunzione: document.getElementById('edit-p-arruolamento').value,
-      email_istituzionale: document.getElementById('edit-p-email-ist').value,
-      email_personale: document.getElementById('edit-p-email-pers').value,
-      telefono: document.getElementById('edit-p-telefono').value,
-      indirizzo_residenza: document.getElementById('edit-p-residenza').value,
-      note_generali: document.getElementById('edit-p-note').value
+      email_istituzionale: document.getElementById('edit-p-email-ist').value.trim(),
+      email_personale: document.getElementById('edit-p-email-pers').value.trim(),
+      telefono: document.getElementById('edit-p-telefono').value.trim(),
+      indirizzo_residenza: document.getElementById('edit-p-residenza').value.trim(),
+      note_generali: document.getElementById('edit-p-note').value.trim()
     };
 
     try {
@@ -1353,19 +1586,47 @@ function setupPassaportoForm() {
   });
 }
 
+// --- Sincronizzazione Durata Settimane / Ore ---
+function syncDurataOre(prefix) {
+  const settEl = document.getElementById(`${prefix}-settimane`);
+  const oreEl = document.getElementById(`${prefix}-ore`);
+  if (!settEl || !oreEl) return;
+  const sett = parseFloat(settEl.value);
+  if (!isNaN(sett) && sett > 0) {
+    oreEl.value = Math.round(sett * 36);
+  }
+}
+
+function syncDurataSettimane(prefix) {
+  const settEl = document.getElementById(`${prefix}-settimane`);
+  const oreEl = document.getElementById(`${prefix}-ore`);
+  if (!settEl || !oreEl) return;
+  const ore = parseFloat(oreEl.value);
+  if (!isNaN(ore) && ore > 0) {
+    settEl.value = (ore / 36) % 1 === 0 ? (ore / 36) : (ore / 36).toFixed(1);
+  }
+}
+
 // --- Inserimento Corso a Catalogo ---
 function setupCatalogoForm() {
   const form = document.getElementById('form-nuovo-catalogo-corso');
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {
-      codice_corso: document.getElementById('cat-codice').value,
-      denominazione: document.getElementById('cat-nome').value,
-      ente_erogatore: document.getElementById('cat-ente').value,
+      codice_corso: document.getElementById('cat-codice').value.trim(),
+      denominazione: document.getElementById('cat-nome').value.trim(),
+      ente_erogatore: document.getElementById('cat-ente').value.trim(),
+      durata_settimane: document.getElementById('cat-settimane').value ? parseFloat(document.getElementById('cat-settimane').value) : null,
       durata_ore: document.getElementById('cat-ore').value ? parseInt(document.getElementById('cat-ore').value) : null,
       validita_mesi: document.getElementById('cat-validita').value ? parseInt(document.getElementById('cat-validita').value) : null,
-      prerequisiti: document.getElementById('cat-prerequisiti').value,
-      descrizione: document.getElementById('cat-desc').value
+      requisiti_sicurezza: document.getElementById('cat-sicurezza').value.trim(),
+      precedenti_formativi: document.getElementById('cat-formativi').value.trim(),
+      precedenti_operativi: document.getElementById('cat-operativi').value.trim(),
+      selezioni: document.getElementById('cat-selezioni').value.trim(),
+      conoscenza_lingua: document.getElementById('cat-lingua').value.trim(),
+      altri_requisiti: document.getElementById('cat-altri').value.trim(),
+      prerequisiti: document.getElementById('cat-prerequisiti').value.trim(),
+      descrizione: document.getElementById('cat-desc').value.trim()
     };
 
     try {
@@ -1391,8 +1652,15 @@ function setupModificaCatalogoForm() {
       codice_corso: document.getElementById('edit-cat-codice').value.trim(),
       denominazione: document.getElementById('edit-cat-nome').value.trim(),
       ente_erogatore: document.getElementById('edit-cat-ente').value.trim(),
+      durata_settimane: document.getElementById('edit-cat-settimane').value ? parseFloat(document.getElementById('edit-cat-settimane').value) : null,
       durata_ore: document.getElementById('edit-cat-ore').value ? parseInt(document.getElementById('edit-cat-ore').value) : null,
       validita_mesi: document.getElementById('edit-cat-validita').value ? parseInt(document.getElementById('edit-cat-validita').value) : null,
+      requisiti_sicurezza: document.getElementById('edit-cat-sicurezza').value.trim(),
+      precedenti_formativi: document.getElementById('edit-cat-formativi').value.trim(),
+      precedenti_operativi: document.getElementById('edit-cat-operativi').value.trim(),
+      selezioni: document.getElementById('edit-cat-selezioni').value.trim(),
+      conoscenza_lingua: document.getElementById('edit-cat-lingua').value.trim(),
+      altri_requisiti: document.getElementById('edit-cat-altri').value.trim(),
       prerequisiti: document.getElementById('edit-cat-prerequisiti').value.trim(),
       descrizione: document.getElementById('edit-cat-desc').value.trim()
     };
@@ -1543,27 +1811,74 @@ function renderAnteprimaCorsi(courses, filename) {
 
   if (!tbody) return;
   tbody.innerHTML = courses.map((c, index) => {
-    const codeBadge = c.codice_corso ? `<span class="badge" style="background:#e0f2fe; color:#0369a1; font-family:monospace; margin-bottom:4px; display:inline-block;">${c.codice_corso}</span><br>` : '';
-    const ente = c.ente_erogatore || '';
-    const ore = c.durata_ore || '';
-    const prereqVal = (c.prerequisiti || '').replace(/"/g, '&quot;');
+    const codiceVal = (c.codice_corso || '').replace(/"/g, '&quot;');
     const nomeVal = (c.denominazione || '').replace(/"/g, '&quot;');
+    const enteVal = (c.ente_erogatore || '').replace(/"/g, '&quot;');
+    const settVal = c.durata_settimane || '';
+    const oreVal = c.durata_ore || '';
+    const sicVal = (c.requisiti_sicurezza || '').replace(/"/g, '&quot;');
+    const formVal = (c.precedenti_formativi || '').replace(/"/g, '&quot;');
+    const lingVal = (c.conoscenza_lingua || '').replace(/"/g, '&quot;');
+    const opVal = (c.precedenti_operativi || '').replace(/"/g, '&quot;');
+    const selVal = (c.selezioni || '').replace(/"/g, '&quot;');
+    const altriVal = (c.altri_requisiti || '').replace(/"/g, '&quot;');
 
     return `
       <tr data-index="${index}">
-        <td style="vertical-align: top; padding-top: 12px;">
+        <td style="vertical-align: top; padding-top: 12px; text-align: center;">
           <input type="checkbox" class="check-anteprima-item" data-index="${index}" checked>
         </td>
         <td style="vertical-align: top;">
-          ${codeBadge}
-          <input type="text" class="form-control form-control-sm anteprima-nome" value="${nomeVal}" style="font-weight:600; width: 100%;">
+          <div style="margin-bottom: 6px;">
+            <input type="text" class="form-control form-control-sm anteprima-codice" value="${codiceVal}" placeholder="Codice (es. CIFIGE-01)" style="font-family:monospace; font-weight:700; width:130px; display:inline-block; margin-bottom:4px;">
+          </div>
+          <input type="text" class="form-control form-control-sm anteprima-nome" value="${nomeVal}" placeholder="Denominazione corso" style="font-weight:600; width: 100%;">
         </td>
-        <td style="vertical-align: top; font-size: 13px; color: var(--slate-600);">
-          <div style="margin-bottom: 4px;"><strong>Ente:</strong> <input type="text" class="form-control form-control-sm anteprima-ente" value="${ente}" style="display:inline-block; width:130px; font-size:12px;"></div>
-          <div><strong>Ore:</strong> <input type="number" class="form-control form-control-sm anteprima-ore" value="${ore}" style="display:inline-block; width:70px; font-size:12px;"></div>
+        <td style="vertical-align: top; font-size: 13px;">
+          <div style="display:flex; gap:6px; margin-bottom:6px;">
+            <div>
+              <label style="font-size:10.5px; color:var(--slate-500); display:block;">Settimane</label>
+              <input type="number" class="form-control form-control-sm anteprima-settimane" value="${settVal}" style="width:70px;">
+            </div>
+            <div>
+              <label style="font-size:10.5px; color:var(--slate-500); display:block;">Ore</label>
+              <input type="number" class="form-control form-control-sm anteprima-ore" value="${oreVal}" style="width:70px;">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:10.5px; color:var(--slate-500); display:block;">Ente Erogatore</label>
+            <input type="text" class="form-control form-control-sm anteprima-ente" value="${enteVal}" style="width:100%; font-size:12px;">
+          </div>
         </td>
         <td style="vertical-align: top;">
-          <textarea class="form-control form-control-sm anteprima-prerequisiti" rows="2" style="font-size:12.5px; width:100%; resize:vertical;" placeholder="Prerequisiti di accesso...">${c.prerequisiti || ''}</textarea>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px;">
+            <div>
+              <label style="font-size:10.5px; font-weight:600; color:#991b1b; display:block;">🛡️ Sicurezza (NOS):</label>
+              <input type="text" class="form-control form-control-sm anteprima-sicurezza" value="${sicVal}" placeholder="es. Riservato / Segreto">
+            </div>
+            <div>
+              <label style="font-size:10.5px; font-weight:600; color:#1e40af; display:block;">🎓 Formativi:</label>
+              <input type="text" class="form-control form-control-sm anteprima-formativi" value="${formVal}" placeholder="es. Corso propedeutico">
+            </div>
+            <div>
+              <label style="font-size:10.5px; font-weight:600; color:#92400e; display:block;">🗣️ Lingua:</label>
+              <input type="text" class="form-control form-control-sm anteprima-lingua" value="${lingVal}" placeholder="es. NATO JFLT 8">
+            </div>
+            <div>
+              <label style="font-size:10.5px; font-weight:600; color:#6b21a8; display:block;">🪪 Altri / Patenti:</label>
+              <input type="text" class="form-control form-control-sm anteprima-altri" value="${altriVal}" placeholder="es. Patente Mod. 2">
+            </div>
+            ${opVal ? `
+            <div>
+              <label style="font-size:10.5px; font-weight:600; color:#475569; display:block;">⏱️ Operativi:</label>
+              <input type="text" class="form-control form-control-sm anteprima-operativi" value="${opVal}">
+            </div>` : ''}
+            ${selVal ? `
+            <div>
+              <label style="font-size:10.5px; font-weight:600; color:#b91c1c; display:block;">🩺 Selezioni:</label>
+              <input type="text" class="form-control form-control-sm anteprima-selezioni" value="${selVal}">
+            </div>` : ''}
+          </div>
         </td>
       </tr>
     `;
@@ -1585,17 +1900,31 @@ async function confermaImportazioneBatch() {
     if (chk && chk.checked) {
       const idx = parseInt(chk.getAttribute('data-index'));
       const orig = AppState.extractedPdfCourses[idx] || {};
+      const codInput = tr.querySelector('.anteprima-codice');
       const nomeInput = tr.querySelector('.anteprima-nome');
       const enteInput = tr.querySelector('.anteprima-ente');
+      const settInput = tr.querySelector('.anteprima-settimane');
       const oreInput = tr.querySelector('.anteprima-ore');
-      const prereqInput = tr.querySelector('.anteprima-prerequisiti');
+      const sicInput = tr.querySelector('.anteprima-sicurezza');
+      const formInput = tr.querySelector('.anteprima-formativi');
+      const lingInput = tr.querySelector('.anteprima-lingua');
+      const opInput = tr.querySelector('.anteprima-operativi');
+      const selInput = tr.querySelector('.anteprima-selezioni');
+      const altriInput = tr.querySelector('.anteprima-altri');
 
       toImport.push({
         ...orig,
+        codice_corso: codInput ? codInput.value.trim() : orig.codice_corso,
         denominazione: nomeInput ? nomeInput.value.trim() : orig.denominazione,
         ente_erogatore: enteInput ? enteInput.value.trim() : orig.ente_erogatore,
+        durata_settimane: settInput && settInput.value ? parseFloat(settInput.value) : orig.durata_settimane,
         durata_ore: oreInput && oreInput.value ? parseInt(oreInput.value) : orig.durata_ore,
-        prerequisiti: prereqInput ? prereqInput.value.trim() : orig.prerequisiti
+        requisiti_sicurezza: sicInput ? sicInput.value.trim() : orig.requisiti_sicurezza,
+        precedenti_formativi: formInput ? formInput.value.trim() : orig.precedenti_formativi,
+        precedenti_operativi: opInput ? opInput.value.trim() : orig.precedenti_operativi,
+        selezioni: selInput ? selInput.value.trim() : orig.selezioni,
+        conoscenza_lingua: lingInput ? lingInput.value.trim() : orig.conoscenza_lingua,
+        altri_requisiti: altriInput ? altriInput.value.trim() : orig.altri_requisiti
       });
     }
   });

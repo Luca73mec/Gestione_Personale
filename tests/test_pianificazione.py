@@ -47,6 +47,12 @@ class TestPianificazioneCorsi(unittest.TestCase):
 
     def setUp(self):
         db.init_db()
+        self._cleanup()
+
+    def tearDown(self):
+        self._cleanup()
+
+    def _cleanup(self):
         with db.get_db_connection() as conn:
             conn.execute("DELETE FROM partecipazione_corso WHERE personale_id IN (SELECT id FROM personale WHERE matricola LIKE 'MAT-PLAN-%')")
             conn.execute("DELETE FROM patente WHERE personale_id IN (SELECT id FROM personale WHERE matricola LIKE 'MAT-PLAN-%')")

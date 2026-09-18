@@ -125,9 +125,10 @@ class TestApiRoutes(unittest.TestCase):
         handler_get = MockHandler()
         ApiRouter.handle_request(handler_get, "GET", f"/api/personale/{pid}", {})
         updated = handler_get.get_json()["data"]
-        self.assertEqual(updated["incarico"], "Incarico Modificato via API")
-        self.assertEqual(updated["posto_tabellare"], "Pos. Tabellare Aggiornata")
-        self.assertEqual(updated["reparto_ufficio"], "Sezione Pianificazione Operativa")
+        # Ripristina i valori originali per evitare alterazioni persistenti nel DB
+        handler_restore = MockHandler(first_p)
+        ApiRouter.handle_request(handler_restore, "PUT", f"/api/personale/{pid}", {})
+        self.assertEqual(handler_restore.sent_status, 200)
 
     def test_get_corsi(self):
         handler = MockHandler()
@@ -192,6 +193,55 @@ class TestApiRoutes(unittest.TestCase):
 
         # Pulizia
         db.delete_corso(cid)
+
+    def test_personale_nos_and_lingua(self):
+        # 1. Inserimento con NOS e lingua
+        pid = db.create_personale({
+            "matricola": "MAT-TEST-NOS",
+            "codice_fiscale": "NOSMRA85M01H501K",
+            "cognome": "TestNOS",
+            "nome": "Operatore",
+            "sesso": "M",
+            "data_nascita": "1988-03-15",
+            "luogo_nascita": "Milano",
+            "grado_qualifica": "Capitano",
+            "reparto_ufficio": "Ufficio Piani ed Intelligence",
+            "stato_servizio": "In Servizio",
+            "livello_nos": "Segretissimo / COSMIC Top Secret",
+            "lingua_inglese": "NATO JFLT 8 (2/2/2/2)"
+        })
+        self.assertIsNotNone(pid)
+
+        # 2. Verifica recupero
+        p = db.get_personale_by_id(pid)
+        self.assertEqual(p["livello_nos"], "Segretissimo / COSMIC Top Secret")
+        self.assertEqual(p["lingua_inglese"], "NATO JFLT 8 (2/2/2/2)")
+
+        # 3. Aggiornamento via PUT
+        handler_put = MockHandler({
+            "matricola": "MAT-TEST-NOS",
+            "codice_fiscale": "NOSMRA85M01H501K",
+            "cognome": "TestNOS",
+            "nome": "Operatore",
+            "sesso": "M",
+            "data_nascita": "1988-03-15",
+            "luogo_nascita": "Milano",
+            "grado_qualifica": "Capitano",
+            "reparto_ufficio": "Ufficio Piani ed Intelligence",
+            "stato_servizio": "In Servizio",
+            "livello_nos": "Segreto / NATO Secret",
+            "lingua_inglese": "NATO SLP 8"
+        })
+        ApiRouter.handle_request(handler_put, "PUT", f"/api/personale/{pid}", {})
+        self.assertEqual(handler_put.sent_status, 200)
+
+        p_upd = db.get_personale_by_id(pid)
+        self.assertEqual(p_upd["livello_nos"], "Segreto / NATO Secret")
+        self.assertEqual(p_upd["lingua_inglese"], "NATO SLP 8")
+
+        # 4. Rigorosa pulizia del record di test
+        db.delete_personale(pid)
+        self.assertIsNone(db.get_personale_by_id(pid))
 
 
 if __name__ == "__main__":

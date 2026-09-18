@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS personale (
     email_personale TEXT,
     telefono TEXT,
     indirizzo_residenza TEXT,
+    livello_nos TEXT DEFAULT 'Riservato', -- Es: Nessuno, Riservato, Segreto / NATO Secret, Segretissimo / COSMIC Top Secret
+    lingua_inglese TEXT DEFAULT 'NATO JFLT 8', -- Es: NATO JFLT 8 (2/2/2/2), NATO SLP 8, Livello B2, ecc.
     note_generali TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -52,9 +54,16 @@ CREATE TABLE IF NOT EXISTS corso (
     codice_corso TEXT UNIQUE NOT NULL,
     denominazione TEXT NOT NULL,
     ente_erogatore TEXT NOT NULL,
-    durata_ore INTEGER,
-    validita_mesi INTEGER DEFAULT NULL, -- NULL se senza scadenza periodica (es. BLSD = 24 mesi)
-    prerequisiti TEXT, -- Requisiti minimi di accesso/idoneità/grado/propedeuticità
+    durata_settimane INTEGER, -- Durata temporale in settimane (es. 1, 2, 4, 5, 6, 7)
+    durata_ore INTEGER, -- Durata totale in ore (es. settimane * 36)
+    validita_mesi INTEGER DEFAULT NULL, -- NULL se senza scadenza periodica (permanente)
+    requisiti_sicurezza TEXT, -- Es. NOS Riservato, Segreto / NATO Secret, Segretissimo / COSMIC Top Secret
+    precedenti_formativi TEXT, -- Es. Corsi propedeutici obbligatori o auspicabili
+    precedenti_operativi TEXT, -- Es. 12 mesi impiego operativo OSINT, 3 anni CII, ecc.
+    selezioni TEXT, -- Es. Prove selettive protocollo fonti umane 2021, idoneità volo IMAS, test ingresso
+    conoscenza_lingua TEXT, -- Es. NATO JFLT non inferiore a 8 (2/2/2/2), NATO SLP 8
+    altri_requisiti TEXT, -- Es. Patente Militare Mod. 2, giudizio note caratteristiche >= Superiore alla Media
+    prerequisiti TEXT, -- Sintesi generale dei requisiti per compatibilità retroattiva
     fonte_catalogo TEXT DEFAULT 'Manuale', -- Nome file PDF o 'Manuale'
     descrizione TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

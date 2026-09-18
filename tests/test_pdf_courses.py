@@ -211,6 +211,12 @@ class TestPdfCourseExtraction(unittest.TestCase):
         self.assertEqual(manual_entry["denominazione"], "Corso Riconoscimento Mezzi Corazzati")
         self.assertEqual(manual_entry["prerequisiti"], "Idoneità al servizio operativo")
 
+    def tearDown(self):
+        with db.get_db_connection() as conn:
+            conn.execute("DELETE FROM partecipazione_corso WHERE numero_attestato IN ('ATT-CAT-999', 'ATT-MAN-123')")
+            conn.execute("DELETE FROM corso WHERE codice_corso IN ('TEST-CYB-01', 'TEST-CYB-02', 'API-CAT-01') OR denominazione = 'Corso Riconoscimento Mezzi Corazzati'")
+            conn.commit()
+
 
 if __name__ == "__main__":
     unittest.main()
