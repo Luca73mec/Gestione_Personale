@@ -31,20 +31,20 @@ Private Sub CreaTabelleLocali()
         "sesso TEXT(10), data_nascita DATETIME, luogo_nascita TEXT(150), provincia_nascita TEXT(10), " & _
         "grado_qualifica TEXT(150), reparto_ufficio TEXT(150), incarico TEXT(200), posto_tabellare TEXT(200), " & _
         "data_arruolamento_assunzione DATETIME, stato_servizio TEXT(50), email_istituzionale TEXT(254), " & _
-        "email_personale TEXT(254), telefono TEXT(50), indirizzo_residenza TEXT(300), livello_nos TEXT(100), " & _
+        "email_personale TEXT(254), telefono TEXT(50), indirizzo_residenza TEXT(255), livello_nos TEXT(100), " & _
         "lingua_inglese TEXT(100), note_generali MEMO, created_at DATETIME, updated_at DATETIME)"
 
     CreaTabella db, "patente", _
         "CREATE TABLE patente (id AUTOINCREMENT CONSTRAINT pk_patente PRIMARY KEY, personale_id LONG, " & _
         "tipo_patente TEXT(30), categoria TEXT(100), numero_patente TEXT(100), ente_rilascio TEXT(200), " & _
-        "data_rilascio DATETIME, data_scadenza DATETIME, limitazioni_abilitazioni TEXT(500), created_at DATETIME)"
+        "data_rilascio DATETIME, data_scadenza DATETIME, limitazioni_abilitazioni TEXT(255), created_at DATETIME)"
 
     CreaTabella db, "corso", _
         "CREATE TABLE corso (id AUTOINCREMENT CONSTRAINT pk_corso PRIMARY KEY, codice_corso TEXT(100), " & _
-        "denominazione TEXT(300), ente_erogatore TEXT(200), durata_settimane LONG, durata_ore LONG, " & _
+        "denominazione TEXT(255), ente_erogatore TEXT(200), durata_settimane LONG, durata_ore LONG, " & _
         "validita_mesi LONG, requisiti_sicurezza MEMO, precedenti_formativi MEMO, precedenti_operativi MEMO, " & _
-        "selezioni MEMO, conoscenza_lingua TEXT(500), altri_requisiti MEMO, prerequisiti MEMO, " & _
-        "fonte_catalogo TEXT(300), descrizione MEMO, created_at DATETIME)"
+        "selezioni MEMO, conoscenza_lingua TEXT(255), altri_requisiti MEMO, prerequisiti MEMO, " & _
+        "fonte_catalogo TEXT(255), descrizione MEMO, created_at DATETIME)"
 
     CreaTabella db, "partecipazione_corso", _
         "CREATE TABLE partecipazione_corso (id AUTOINCREMENT CONSTRAINT pk_partecipazione PRIMARY KEY, " & _
@@ -60,7 +60,7 @@ Private Sub CreaTabelleLocali()
 
     CreaTabella db, "passaporto_servizio", _
         "CREATE TABLE passaporto_servizio (id AUTOINCREMENT CONSTRAINT pk_passaporto PRIMARY KEY, " & _
-        "personale_id LONG, numero_passaporto TEXT(100), tipo_passaporto TEXT(30), autorita_rilascio TEXT(300), " & _
+        "personale_id LONG, numero_passaporto TEXT(100), tipo_passaporto TEXT(30), autorita_rilascio TEXT(255), " & _
         "data_rilascio DATETIME, data_scadenza DATETIME, stato TEXT(30), ubicazione_custodia TEXT(200), " & _
         "note MEMO, created_at DATETIME)"
 End Sub
