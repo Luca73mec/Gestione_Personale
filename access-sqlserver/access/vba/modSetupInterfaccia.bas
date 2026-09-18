@@ -1,4 +1,3 @@
-Attribute VB_Name = "modSetupInterfaccia"
 Option Compare Database
 Option Explicit
 

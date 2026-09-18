@@ -10,7 +10,9 @@ database e le maschere risiedono nello stesso file Access `.accdb`.
 1. Crea un database Access vuoto.
 2. Premi `ALT+F11`.
 3. Seleziona **Inserisci > Modulo**.
-4. Copia il contenuto di `access/vba/modSetupLocale.bas`.
+4. Copia il contenuto di `access/vba/modSetupLocale.bas`. Non copiare
+  eventuali righe `Attribute VB_Name = ...`: sono metadati dei file VBA
+  esportati e provocano un errore di sintassi se incollati nell'editor.
 5. Salva il modulo come `modSetupLocale`.
 6. Posiziona il cursore dentro `SetupLocale`.
 7. Premi `F5`.

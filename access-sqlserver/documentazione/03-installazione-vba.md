@@ -12,7 +12,9 @@
 1. Crea un database Access vuoto in formato `.accdb`.
 2. Premi `ALT+F11` per aprire l'editor VBA.
 3. Seleziona **Inserisci > Modulo**.
-4. Copia il contenuto di `access/vba/modSetupInterfaccia.bas` nel modulo.
+4. Copia il contenuto di `access/vba/modSetupInterfaccia.bas` nel modulo. Se il
+  file mostra una riga `Attribute VB_Name = ...`, non copiarla: e una riga
+  interna ai file VBA esportati e provoca un errore quando viene incollata.
 5. Salva il modulo con il nome `modSetupInterfaccia`.
 6. Posiziona il cursore dentro `SetupInterfaccia`.
 7. Premi `F5`.

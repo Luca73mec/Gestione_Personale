@@ -1,4 +1,3 @@
-Attribute VB_Name = "modSetupLocale"
 Option Compare Database
 Option Explicit
 
