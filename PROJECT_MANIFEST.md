@@ -55,7 +55,7 @@ GestionePersonaleWeb/
 
 ## Stato attuale del progetto
 
-Versione corrente: `0.1.7`
+Versione corrente: `0.1.8`
 
 ## Ultimo aggiornamento
 
